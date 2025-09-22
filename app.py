@@ -23,14 +23,21 @@ logger = logging.getLogger(__name__)
 
 # Initialize data processor (Supabase-only per requirements; local path unused)
 data_processor = CricketDataProcessor('data/')
-# Begin background loading of all matches from Supabase for fast startup
+# Begin background loading of matches from Supabase for fast startup
 try:
-    max_files_env = os.getenv('SUPABASE_MAX_FILES')
-    try:
-        # Default to 5 files if not explicitly configured
-        max_files_val = int(float(max_files_env)) if max_files_env else 100
-    except Exception:
-        max_files_val = 100
+    # Interpret SUPABASE_MAX_FILES: default to unlimited (all files)
+    raw = os.getenv('SUPABASE_MAX_FILES', '').strip().lower()
+    max_files_val = None
+    if raw:
+        # allow keywords for unlimited
+        if raw in {'all', 'unlimited', 'none', 'null', 'inf', 'infinite'}:
+            max_files_val = None
+        else:
+            try:
+                n = int(float(raw))
+                max_files_val = None if n <= 0 else n
+            except Exception:
+                max_files_val = None
     data_processor.start_background_supabase_load(max_workers=16, max_files=max_files_val)
 except Exception:
     logger.exception("Failed to start background load")
