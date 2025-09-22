@@ -2,7 +2,6 @@ import json
 import os
 import glob
 from collections import defaultdict
-import pandas as pd
 from datetime import datetime
 import logging
 from typing import Any, Dict, List, Optional
