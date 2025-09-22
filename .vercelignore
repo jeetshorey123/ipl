@@ -10,6 +10,7 @@ __pycache__/
 # Large or local-only data and models
 models/
 data/
+/combined_json_analysis/
 /tmp/
 .cache/
 

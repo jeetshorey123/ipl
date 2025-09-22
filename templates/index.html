@@ -27,6 +27,9 @@
                 <h3 id="statMatches">-</h3>
                 <p>Matches Loaded</p>
                 <small class="text-muted" id="statProgress" style="display:block"></small>
+                <div class="progress mt-2" style="height: 6px;">
+                    <div id="statProgressBar" class="progress-bar bg-success" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
             </div>
         </div>
         <div class="col-md-3 col-sm-6 mb-4">
@@ -85,6 +88,9 @@
                     <h3 class="text-primary" id="totalMatches">-</h3>
                     <p class="text-muted mb-0">Matches Loaded</p>
                     <small class="text-muted" id="loadProgress"></small>
+                    <div class="progress mt-2" style="height: 6px;">
+                        <div id="loadProgressBar" class="progress-bar bg-primary" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -287,6 +293,8 @@ function startHealthPolling() {
     const statPlayersEl = document.getElementById('statPlayers');
     const progressEl = document.getElementById('loadProgress');
     const statProgressEl = document.getElementById('statProgress');
+    const loadBar = document.getElementById('loadProgressBar');
+    const statBar = document.getElementById('statProgressBar');
     let timer = null;
     const update = () => {
         fetch('/api/data/health')
@@ -300,9 +308,26 @@ function startHealthPolling() {
                 if (typeof h.players_count === 'number' && statPlayersEl) {
                     statPlayersEl.textContent = h.players_count.toLocaleString();
                 }
-                const msg = total ? `${h.files_loaded ?? loaded}/${total} files` : (loading ? 'Loading…' : '');
+                const filesLoaded = h.files_loaded ?? loaded;
+                let pct = 0;
+                if (total && total > 0) {
+                    pct = Math.floor((filesLoaded / total) * 100);
+                } else if (loading) {
+                    pct = 0;
+                } else if (!loading && loaded > 0) {
+                    pct = 100;
+                }
+                const msg = total ? `${filesLoaded}/${total} files • ${pct}%` : (loading ? 'Loading…' : (loaded > 0 ? '100%' : ''));
                 progressEl.textContent = msg;
                 statProgressEl.textContent = msg;
+                if (loadBar) {
+                    loadBar.style.width = `${pct}%`;
+                    loadBar.setAttribute('aria-valuenow', String(pct));
+                }
+                if (statBar) {
+                    statBar.style.width = `${pct}%`;
+                    statBar.setAttribute('aria-valuenow', String(pct));
+                }
                 if (!loading && timer) {
                     clearInterval(timer);
                     timer = null;
