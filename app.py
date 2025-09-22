@@ -38,7 +38,19 @@ try:
                 max_files_val = None if n <= 0 else n
             except Exception:
                 max_files_val = None
-    data_processor.start_background_supabase_load(max_workers=16, max_files=max_files_val)
+    # Interpret SUPABASE_MAX_WORKERS: default to 16; clamp to sane bounds [1, 64]
+    workers_raw = os.getenv('SUPABASE_MAX_WORKERS', '').strip().lower()
+    max_workers_val = 16
+    if workers_raw:
+        try:
+            w = int(float(workers_raw))
+            if w <= 0:
+                max_workers_val = 16
+            else:
+                max_workers_val = max(1, min(w, 64))
+        except Exception:
+            max_workers_val = 16
+    data_processor.start_background_supabase_load(max_workers=max_workers_val, max_files=max_files_val)
 except Exception:
     logger.exception("Failed to start background load")
 player_stats = PlayerStatsCalculator(data_processor)
