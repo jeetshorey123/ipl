@@ -21,9 +21,8 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize data processor and load local data JSONs
+# Initialize data processor and start fast background local load (concurrent)
 data_processor = CricketDataProcessor('data/')
-# Use local JSONs instead of Supabase when requested
 try:
     local_limit_raw = (os.getenv('LOCAL_MAX_FILES') or '').strip().lower()
     local_limit = None
@@ -34,9 +33,15 @@ try:
                 local_limit = None if n <= 0 else n
             except Exception:
                 local_limit = None
-    data_processor.load_all_matches(limit_matches=local_limit)
+    local_workers_raw = (os.getenv('LOCAL_MAX_WORKERS') or '').strip()
+    try:
+        local_workers = int(float(local_workers_raw)) if local_workers_raw else 24
+    except Exception:
+        local_workers = 24
+    # Start non-blocking background load from local data folder
+    data_processor.start_background_local_load(max_workers=local_workers, max_files=local_limit)
 except Exception:
-    logger.exception("Failed to load local JSON data")
+    logger.exception("Failed to start background local JSON load")
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
@@ -127,7 +132,7 @@ def supabase_sample():
 
 @app.route('/api/data/reload', methods=['POST'])
 def reload_data():
-    """Force reload from Supabase (clears caches)."""
+    """Force reload from local data directory (clears caches)."""
     try:
         payload = request.get_json(silent=True) or {}
         max_files = payload.get('max_files')
@@ -136,7 +141,14 @@ def reload_data():
                 max_files = int(float(max_files.strip()))
         except Exception:
             max_files = None
-        res = data_processor.reload_from_supabase(max_files=max_files)
+        # Allow override of worker count via request
+        max_workers = payload.get('max_workers')
+        try:
+            if isinstance(max_workers, str):
+                max_workers = int(float(max_workers.strip()))
+        except Exception:
+            max_workers = None
+        res = data_processor.reload_from_local(max_files=max_files, max_workers=(max_workers or 24))
         return jsonify(res)
     except Exception as e:
         logger.error(f"Error reloading data: {e}")

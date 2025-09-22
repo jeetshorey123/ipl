@@ -63,14 +63,14 @@ class CricketDataProcessor:
         except Exception:
             return default
     
-    def load_all_matches(self, limit_matches: int | None = None):
+    def load_all_matches(self, limit_matches: int | None = None, max_workers: int = 16):
         """Load match data from local JSON files under data_directory.
-        If limit_matches is None or <= 0, load all files. Updates background-loading
-        status fields so the dashboard can display progress.
+        - If limit_matches is None or <= 0, load all files.
+        - Uses a thread pool to parse JSON files concurrently for speed.
+        - Updates background-loading status fields so the dashboard can display progress.
         """
         try:
             json_files = glob.glob(os.path.join(self.data_directory, "*.json"))
-            total = len(json_files)
             # Normalize limit
             if isinstance(limit_matches, (int, float)):
                 try:
@@ -81,7 +81,8 @@ class CricketDataProcessor:
                 limit = None
             if limit is not None and limit > 0:
                 json_files = json_files[:limit]
-            # Set status
+
+            # Set status and reset in-memory caches
             with self._lock:
                 self._loading = True
                 self._total_files = len(json_files)
@@ -91,28 +92,33 @@ class CricketDataProcessor:
                 self.teams_cache = set()
                 self.venues_cache = set()
 
-            logger.info(f"Loading local match data from '{self.data_directory}' ({self._total_files} files)...")
+            logger.info(
+                f"Loading local match data from '{self.data_directory}' with {max_workers} workers "
+                f"({self._total_files} files)..."
+            )
 
-            for file_path in json_files:
+            def read_and_ingest(file_path: str):
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
-                        match_data = json.load(f)
-                    # Ingest
-                    with self._lock:
-                        self.matches_data.append(match_data)
-                        info = match_data.get('info', {})
-                        teams = info.get('teams') or []
-                        self.teams_cache.update(teams)
-                        venue = info.get('venue')
-                        if venue:
-                            self.venues_cache.add(venue)
-                        players = info.get('players') or {}
-                        for _team, plist in players.items():
-                            self.players_cache.update(plist or [])
-                        self._files_loaded += 1
+                        raw = json.load(f)
+                    # Some files could contain nested structure; normalize via extractor
+                    match = self._extract_match_from_row(raw) if isinstance(raw, (dict, list, str)) else None
+                    match_data = match if match else raw if isinstance(raw, dict) else None
+                    if match_data:
+                        self._ingest_match(match_data)
                 except Exception as e:
                     logger.error(f"Error loading {file_path}: {e}")
-                    continue
+
+            # Concurrency for IO-bound loading
+            workers = max(1, min(64, int(max_workers or 1)))
+            if workers == 1 or len(json_files) <= 1:
+                for fp in json_files:
+                    read_and_ingest(fp)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = [executor.submit(read_and_ingest, fp) for fp in json_files]
+                    for _ in as_completed(futures):
+                        pass
 
             logger.info(
                 f"Loaded {len(self.matches_data)} matches from local JSONs | "
@@ -121,6 +127,52 @@ class CricketDataProcessor:
         finally:
             with self._lock:
                 self._loading = False
+
+    def start_background_local_load(self, max_workers: int = 16, max_files: int | None = None):
+        """Start loading matches from local JSON files in the background with concurrency.
+        This mirrors the Supabase background loader but reads from disk.
+        """
+        if self._loading:
+            logger.info("Background load already in progress")
+            return
+
+        def worker():
+            try:
+                self.load_all_matches(limit_matches=max_files, max_workers=max_workers)
+            except Exception as e:
+                logger.error(f"Background local load failed: {e}")
+            finally:
+                with self._lock:
+                    self._loading = False
+
+        # Mark loading and start thread
+        with self._lock:
+            self._loading = True
+            self._files_loaded = 0
+            # _total_files will be set inside load_all_matches after listing files
+        threading.Thread(target=worker, name="LocalBackgroundLoader", daemon=True).start()
+
+    def reload_from_local(self, max_files: int | None = None, max_workers: int = 16):
+        """Clear caches and start background local load from data directory."""
+        try:
+            with self._lock:
+                self.matches_data = []
+                self.players_cache = set()
+                self.teams_cache = set()
+                self.venues_cache = set()
+                self._files_loaded = 0
+                self._total_files = 0
+            self.start_background_local_load(max_workers=max_workers, max_files=max_files)
+            return {
+                'matches_loaded': len(self.matches_data),
+                'players_count': len(self.players_cache),
+                'teams_count': len(self.teams_cache),
+                'venues_count': len(self.venues_cache),
+                'loading': self._loading
+            }
+        except Exception as e:
+            logger.error(f"Failed to reload from local: {e}")
+            return {'error': str(e)}
 
     def _extract_match_from_row(self, row: Dict[str, Any]):
         """Try to extract a match JSON object from a Supabase row with unknown schema.
