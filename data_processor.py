@@ -31,9 +31,9 @@ class CricketDataProcessor:
         self._total_files = 0
         self._files_loaded = 0
         self._ingested_keys = set()
-        # Supabase-only data source per requirements
+        # Supabase may not be configured in local-only mode; that's fine.
         if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
-            logger.error("Supabase not configured or not connected. No local data fallback per requirements.")
+            logger.info("Supabase not configured/connected; running in local JSON mode if requested.")
         
         # Initialize calculators
         from player_stats import PlayerStatsCalculator
@@ -63,47 +63,64 @@ class CricketDataProcessor:
         except Exception:
             return default
     
-    def load_all_matches(self, limit_matches=200):
-        """Load match data from JSON files with optional limit for development"""
-        logger.info(f"Loading match data (limit: {limit_matches} matches for development)...")
-        json_files = glob.glob(os.path.join(self.data_directory, "*.json"))
-        
-        loaded_count = 0
-        for file_path in json_files:
-            if loaded_count >= limit_matches:
-                break
-                
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    match_data = json.load(f)
-                    self.matches_data.append(match_data)
-                    loaded_count += 1
-                    
-                    # Cache unique values
-                    if 'info' in match_data:
-                        info = match_data['info']
-                        
-                        # Cache teams
-                        if 'teams' in info:
-                            self.teams_cache.update(info['teams'])
-                        
-                        # Cache venue
-                        if 'venue' in info:
-                            self.venues_cache.add(info['venue'])
-                        
-                        # Cache players
-                        if 'players' in info:
-                            for team, players in info['players'].items():
-                                self.players_cache.update(players)
-                                
-            except Exception as e:
-                logger.error(f"Error loading {file_path}: {e}")
-                continue
-        
-        logger.info(f"Loaded {len(self.matches_data)} matches (development mode - limited dataset)")
-        logger.info(f"Found {len(self.players_cache)} unique players")
-        logger.info(f"Found {len(self.teams_cache)} unique teams")
-        logger.info(f"Found {len(self.venues_cache)} unique venues")
+    def load_all_matches(self, limit_matches: int | None = None):
+        """Load match data from local JSON files under data_directory.
+        If limit_matches is None or <= 0, load all files. Updates background-loading
+        status fields so the dashboard can display progress.
+        """
+        try:
+            json_files = glob.glob(os.path.join(self.data_directory, "*.json"))
+            total = len(json_files)
+            # Normalize limit
+            if isinstance(limit_matches, (int, float)):
+                try:
+                    limit = int(limit_matches)
+                except Exception:
+                    limit = None
+            else:
+                limit = None
+            if limit is not None and limit > 0:
+                json_files = json_files[:limit]
+            # Set status
+            with self._lock:
+                self._loading = True
+                self._total_files = len(json_files)
+                self._files_loaded = 0
+                self.matches_data = []
+                self.players_cache = set()
+                self.teams_cache = set()
+                self.venues_cache = set()
+
+            logger.info(f"Loading local match data from '{self.data_directory}' ({self._total_files} files)...")
+
+            for file_path in json_files:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        match_data = json.load(f)
+                    # Ingest
+                    with self._lock:
+                        self.matches_data.append(match_data)
+                        info = match_data.get('info', {})
+                        teams = info.get('teams') or []
+                        self.teams_cache.update(teams)
+                        venue = info.get('venue')
+                        if venue:
+                            self.venues_cache.add(venue)
+                        players = info.get('players') or {}
+                        for _team, plist in players.items():
+                            self.players_cache.update(plist or [])
+                        self._files_loaded += 1
+                except Exception as e:
+                    logger.error(f"Error loading {file_path}: {e}")
+                    continue
+
+            logger.info(
+                f"Loaded {len(self.matches_data)} matches from local JSONs | "
+                f"players={len(self.players_cache)}, teams={len(self.teams_cache)}, venues={len(self.venues_cache)}"
+            )
+        finally:
+            with self._lock:
+                self._loading = False
 
     def _extract_match_from_row(self, row: Dict[str, Any]):
         """Try to extract a match JSON object from a Supabase row with unknown schema.

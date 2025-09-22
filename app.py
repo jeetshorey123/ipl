@@ -21,38 +21,22 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize data processor (Supabase-only per requirements; local path unused)
+# Initialize data processor and load local data JSONs
 data_processor = CricketDataProcessor('data/')
-# Begin background loading of matches from Supabase for fast startup
+# Use local JSONs instead of Supabase when requested
 try:
-    # Interpret SUPABASE_MAX_FILES: default to unlimited (all files)
-    raw = os.getenv('SUPABASE_MAX_FILES', '').strip().lower()
-    max_files_val = None
-    if raw:
-        # allow keywords for unlimited
-        if raw in {'all', 'unlimited', 'none', 'null', 'inf', 'infinite'}:
-            max_files_val = None
-        else:
+    local_limit_raw = (os.getenv('LOCAL_MAX_FILES') or '').strip().lower()
+    local_limit = None
+    if local_limit_raw:
+        if local_limit_raw not in {'all', 'none', 'unlimited', 'null', 'inf', 'infinite'}:
             try:
-                n = int(float(raw))
-                max_files_val = None if n <= 0 else n
+                n = int(float(local_limit_raw))
+                local_limit = None if n <= 0 else n
             except Exception:
-                max_files_val = None
-    # Interpret SUPABASE_MAX_WORKERS: default to 16; clamp to sane bounds [1, 64]
-    workers_raw = os.getenv('SUPABASE_MAX_WORKERS', '').strip().lower()
-    max_workers_val = 16
-    if workers_raw:
-        try:
-            w = int(float(workers_raw))
-            if w <= 0:
-                max_workers_val = 16
-            else:
-                max_workers_val = max(1, min(w, 64))
-        except Exception:
-            max_workers_val = 16
-    data_processor.start_background_supabase_load(max_workers=max_workers_val, max_files=max_files_val)
+                local_limit = None
+    data_processor.load_all_matches(limit_matches=local_limit)
 except Exception:
-    logger.exception("Failed to start background load")
+    logger.exception("Failed to load local JSON data")
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
