@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+*.pyo
+*.pyd
+
+# Environments
+.venv/
+.env
+.env.*
+.venv*/
+venv/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Byte-compiled / cache / logs
+*.log
+*.sqlite3
+
+# Node
+node_modules/
+
+# Data and artifacts (keep source JSONs from Supabase bucket out if accidentally downloaded)
+/tmp/
+.cache/
+*.parquet
+*.csv
+*.xlsx
+
+# Build
+build/
+dist/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker
+*.tar

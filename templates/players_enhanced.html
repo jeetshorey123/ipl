@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}Player Analysis{% endblock %}
+
+{% block extra_css %}
+<style>
+    .player-search-container {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 15px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    .filter-container {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stats-card {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+    
+    .stat-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stat-item:last-child {
+        border-bottom: none;
+    }
+    
+    .stat-label {
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+    
+    .stat-value {
+        font-weight: 600;
+        color: var(--primary-color);
+        font-size: 1.1em;
+    }
+    
+    .advanced-analysis {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .analysis-section {
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 8px;
+        border-left: 4px solid var(--accent-color);
+    }
+    
+    .position-stats, .opposition-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .position-item, .opposition-item {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .dismissal-pattern {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        margin: 0.5rem 0;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 5px;
+    }
+    
+    .multi-select-dropdown {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+    }
+    
+    .multi-select-button {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: var(--text-color);
+        padding: 0.6rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        width: 100%;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .multi-select-options {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(13, 27, 42, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 8px;
+        margin-top: 2px;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+    }
+    
+    .multi-select-option {
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        transition: background-color 0.2s;
+    }
+    
+    .multi-select-option:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .multi-select-option input[type="checkbox"] {
+        margin-right: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="text-gradient mb-4">Enhanced Player Analysis</h1>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-12">
+            <div class="player-search-container">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="playerSearch" class="form-label">Player Name</label>
+                        <input type="text" class="form-control glass-input" id="playerSearch" 
+                               placeholder="Enter player name..." list="playersList">
+                        <datalist id="playersList"></datalist>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="formatFilter" class="form-label">Format</label>
+                        <select class="form-select glass-input" id="formatFilter">
+                            <option value="">All Formats</option>
+                            <option value="ODI">ODI</option>
+                            <option value="T20I">T20I</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="inningsTypeFilter" class="form-label">Innings Type</label>
+                        <select class="form-select glass-input" id="inningsTypeFilter">
+                            <option value="">Overall</option>
+                            <option value="batting_first">Batting First</option>
+                            <option value="bowling_first">Bowling First</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="venueFilter" class="form-label">Venue</label>
+                        <select class="form-select glass-input" id="venueFilter">
+                            <option value="">All Venues</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="yearFilter" class="form-label">Years</label>
+                        <div class="multi-select-dropdown">
+                            <div class="multi-select-button" id="yearFilterButton">
+                                <span id="yearFilterText">All Years</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                            <div class="multi-select-options" id="yearFilterOptions">
+                                <!-- Years will be loaded dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button class="btn btn-primary glass-btn w-100" id="searchButton">
+                            <i class="fas fa-search me-2"></i>Search
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-12">
+            <div class="filter-container" style="display: none;" id="activeFilters">
+                <h6><i class="fas fa-filter me-2"></i>Active Filters</h6>
+                <div id="filterTags"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="playerResults" style="display: none;">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="stats-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-bat me-2"></i>Batting Statistics</h4>
+                    <div id="battingStats"></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="stats-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-baseball-ball me-2"></i>Bowling Statistics</h4>
+                    <div id="bowlingStats"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="stats-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-chart-pie me-2"></i>Run Distribution</h4>
+                    <canvas id="runDistributionChart"></canvas>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="stats-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-trophy me-2"></i>Match Statistics</h4>
+                    <div id="matchStats"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="stats-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-analytics me-2"></i>Advanced Analysis</h4>
+                    <div id="advancedAnalysis" class="advanced-analysis"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="loadingSpinner" style="display: none;">
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Analyzing player data...</p>
+        </div>
+    </div>
+    
+    <div id="errorMessage" style="display: none;">
+        <div class="alert alert-danger glass-alert" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <span id="errorText"></span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/players_enhanced.js') }}"></script>
+{% endblock %}

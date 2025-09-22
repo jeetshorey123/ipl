@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+
+{% block title %}Cricket Analytics Hub - Dashboard{% endblock %}
+
+{% block content %}
+<!-- Clean Sporty Hero Section -->
+<div class="hero-section text-center py-5 mb-5">
+    <div class="container">
+        <h1 class="display-2 fw-bold text-white mb-4">
+            Cricket Analytics Hub
+        </h1>
+        <p class="lead mb-4 text-muted-light">
+            Professional cricket statistics, player analysis, and match predictions
+        </p>
+        <div class="trophy-3d mx-auto mb-4"></div>
+    </div>
+</div>
+
+<!-- Stats Section -->
+<div class="container mt-5">
+    <div class="row mb-5">
+        <div class="col-12">
+            <h2 class="text-center mb-5 text-dark">Platform Overview</h2>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-4">
+            <div class="stat-card">
+                <h3 id="statMatches">-</h3>
+                <p>Matches Loaded</p>
+                <small class="text-muted" id="statProgress" style="display:block"></small>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-4">
+            <div class="stat-card">
+                <h3 id="statPlayers">-</h3>
+                <p>Players Tracked</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-4">
+            <div class="stat-card">
+                <h3>95%</h3>
+                <p>Prediction Accuracy</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-4">
+            <div class="stat-card">
+                <h3>24/7</h3>
+                <p>Live Updates</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Clean Search Section -->
+    <div class="row justify-content-center mb-5">
+        <div class="col-md-10">
+            <div class="search-container">
+                <div class="search-bar">
+                    <input type="text" class="form-control" id="globalSearch" 
+                           placeholder="Search players, teams, venues...">
+                    <button class="btn btn-primary" type="button">
+                        <i class="fas fa-search"></i>
+                        <span class="ms-2">Search</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Clean Quick Stats -->
+<div class="container">
+    <div class="row mb-5">
+        <div class="col-md-3 mb-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-users text-primary mb-3" style="font-size: 2rem;"></i>
+                    <h3 class="text-primary" id="totalPlayers">-</h3>
+                    <p class="text-muted mb-0">Total Players</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-trophy text-warning mb-3" style="font-size: 2rem;"></i>
+                    <h3 class="text-primary" id="totalMatches">-</h3>
+                    <p class="text-muted mb-0">Matches Loaded</p>
+                    <small class="text-muted" id="loadProgress"></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-chart-line text-success mb-3" style="font-size: 2rem;"></i>
+                    <h3 class="text-primary" id="avgScore">-</h3>
+                    <p class="text-muted mb-0">Average Score</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="fas fa-star text-info mb-3" style="font-size: 2rem;"></i>
+                    <h3 class="text-primary" id="topScore">-</h3>
+                    <p class="text-muted mb-0">Highest Score</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Feature Cards -->
+    <div class="row mb-5">
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <i class="fas fa-user-circle text-primary" style="font-size: 3rem;"></i>
+                    </div>
+                    <h5 class="card-title text-center">Player Analytics</h5>
+                    <p class="card-text text-muted">
+                        Comprehensive player statistics including batting averages, strike rates, 
+                        bowling figures, and detailed performance analysis.
+                    </p>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-check text-success me-2"></i>Batting & Bowling Stats</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Dismissal Analysis</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Performance Filters</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Career Milestones</li>
+                    </ul>
+                    <div class="text-center">
+                        <a href="{{ url_for('players') }}" class="btn btn-primary">Explore Players</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <i class="fas fa-users text-success" style="font-size: 3rem;"></i>
+                    </div>
+                    <h5 class="card-title text-center">Team Comparison</h5>
+                    <p class="card-text text-muted">
+                        Analyze team performance, head-to-head records, win percentages, 
+                        and strategic insights across different formats.
+                    </p>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-check text-success me-2"></i>Win/Loss Records</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Head-to-Head Analysis</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Format Performance</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Recent Form</li>
+                    </ul>
+                    <div class="text-center">
+                        <a href="{{ url_for('teams') }}" class="btn btn-secondary">Compare Teams</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <i class="fas fa-chart-line text-warning" style="font-size: 3rem;"></i>
+                    </div>
+                    <h5 class="card-title text-center">Match Predictions</h5>
+                    <p class="card-text text-muted">
+                        Advanced AI-powered match outcome predictions based on historical data, 
+                        current form, and statistical models.
+                    </p>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-check text-success me-2"></i>Win Probability</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Score Predictions</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Key Player Impact</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Venue Analysis</li>
+                    </ul>
+                    <div class="text-center">
+                        <a href="{{ url_for('predictions') }}" class="btn btn-warning">Predict Match</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Analysis Section -->
+<div class="container">
+    <div class="row">
+        <div class="col-lg-8 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Quick Analysis
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="quickPlayerSelect" class="form-label">Select Player</label>
+                            <select class="form-select" id="quickPlayerSelect">
+                                <option value="">Choose a player...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="quickFormatSelect" class="form-label">Format</label>
+                            <select class="form-select" id="quickFormatSelect">
+                                <option value="">All Formats</option>
+                                <option value="Test">Test</option>
+                                <option value="ODI">ODI</option>
+                                <option value="T20">T20</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="quickAnalyzeBtn">
+                        <i class="fas fa-chart-line me-2"></i>Quick Analyze
+                    </button>
+                    
+                    <div id="quickAnalysisResult" class="mt-4" style="display: none;">
+                        <!-- Quick analysis results will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4 mb-4">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-trophy me-2"></i>
+                        Featured Content
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h6 class="fw-bold text-primary">Top Performers</h6>
+                        <p class="small text-muted mb-2">Leading run scorers this season</p>
+                        <div class="d-flex align-items-center mb-2">
+                            <div class="cricket-ball me-2" style="width: 20px; height: 20px;"></div>
+                            <span class="small">View batting leaders</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6 class="fw-bold text-success">Recent Matches</h6>
+                        <p class="small text-muted mb-2">Latest match results and highlights</p>
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-calendar-check text-success me-2"></i>
+                            <span class="small">View recent games</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Load quick stats on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadQuickStats();
+    loadPlayerOptions();
+    startHealthPolling();
+});
+
+function loadQuickStats() {
+    // Use health endpoint for authoritative counts
+    fetch('/api/data/health')
+        .then(response => response.json())
+        .then(h => {
+            if (typeof h.players_count === 'number') {
+                document.getElementById('totalPlayers').textContent = h.players_count.toLocaleString();
+                const sp = document.getElementById('statPlayers');
+                if (sp) sp.textContent = h.players_count.toLocaleString();
+            }
+            if (typeof h.matches_loaded === 'number') {
+                document.getElementById('totalMatches').textContent = h.matches_loaded.toLocaleString();
+            }
+        })
+        .catch(error => console.error('Error loading quick stats:', error));
+        
+    // Matches will be updated by health polling
+}
+
+function loadPlayerOptions() {
+    fetch('/api/data/players')
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('quickPlayerSelect');
+            if (data.players) {
+                data.players.forEach(player => {
+                    const option = document.createElement('option');
+                    option.value = player;
+                    option.textContent = player;
+                    select.appendChild(option);
+                });
+            }
+        })
+        .catch(error => console.error('Error loading players:', error));
+}
+
+function startHealthPolling() {
+    const matchesEl = document.getElementById('totalMatches');
+    const statMatchesEl = document.getElementById('statMatches');
+    const statPlayersEl = document.getElementById('statPlayers');
+    const progressEl = document.getElementById('loadProgress');
+    const statProgressEl = document.getElementById('statProgress');
+    let timer = null;
+    const update = () => {
+        fetch('/api/data/health')
+            .then(r => r.json())
+            .then(h => {
+                const loaded = h.matches_loaded ?? 0;
+                const total = h.total_files ?? 0;
+                const loading = !!h.loading;
+                matchesEl.textContent = loaded.toLocaleString();
+                statMatchesEl.textContent = loaded.toLocaleString();
+                if (typeof h.players_count === 'number' && statPlayersEl) {
+                    statPlayersEl.textContent = h.players_count.toLocaleString();
+                }
+                const msg = total ? `${h.files_loaded ?? loaded}/${total} files` : (loading ? 'Loading…' : '');
+                progressEl.textContent = msg;
+                statProgressEl.textContent = msg;
+                if (!loading && timer) {
+                    clearInterval(timer);
+                    timer = null;
+                }
+            })
+            .catch(() => {});
+    };
+    update();
+    timer = setInterval(update, 2000);
+}
+
+// Quick analyze functionality
+document.getElementById('quickAnalyzeBtn').addEventListener('click', function() {
+    const player = document.getElementById('quickPlayerSelect').value;
+    const format = document.getElementById('quickFormatSelect').value;
+    
+    if (!player) {
+        alert('Please select a player for analysis');
+        return;
+    }
+    
+    const resultDiv = document.getElementById('quickAnalysisResult');
+    resultDiv.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Analyzing...</div>';
+    resultDiv.style.display = 'block';
+    
+    const params = new URLSearchParams();
+    if (format) params.append('format', format);
+    
+    fetch(`/api/player-stats/${encodeURIComponent(player)}?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                resultDiv.innerHTML = '<div class="alert alert-warning">No data found for selected player.</div>';
+                return;
+            }
+            
+            const batting = data.batting || {};
+            const bowling = data.bowling || {};
+            
+            resultDiv.innerHTML = `
+                <div class="card border-primary">
+                    <div class="card-body">
+                        <h6 class="card-title text-primary">${player} - Quick Stats</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">Matches:</small> <strong>${batting.matches || 0}</strong><br>
+                                <small class="text-muted">Runs:</small> <strong>${batting.runs || 0}</strong><br>
+                                <small class="text-muted">Average:</small> <strong>${batting.average || '0.00'}</strong>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted">Strike Rate:</small> <strong>${batting.strike_rate || '0.00'}</strong><br>
+                                <small class="text-muted">High Score:</small> <strong>${batting.high_score || 0}</strong><br>
+                                <small class="text-muted">Centuries:</small> <strong>${batting.hundreds || 0}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultDiv.innerHTML = '<div class="alert alert-danger">Error loading player analysis.</div>';
+        });
+});
+
+// Global search functionality
+document.getElementById('globalSearch').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        performGlobalSearch();
+    }
+});
+
+function performGlobalSearch() {
+    const query = document.getElementById('globalSearch').value.trim();
+    if (query) {
+        // Redirect to search results page or perform search
+        window.location.href = `/search?q=${encodeURIComponent(query)}`;
+    }
+}
+</script>
+{% endblock %}

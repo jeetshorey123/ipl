@@ -1,0 +1,830 @@
+{% extends "base.html" %}
+
+{% block title %}Win Prediction - Cricket Analytics Hub{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-gradient mb-3">
+            <i class="fas fa-brain me-2"></i>
+            Match Win Prediction
+        </h2>
+        <p class="text-muted">AI-powered cricket match outcome predictions using machine learning</p>
+    </div>
+</div>
+
+<!-- Prediction Form -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card modern-card">
+            <div class="card-header bg-transparent">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line text-primary me-2"></i>
+                    Match Setup
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="predictionForm">
+                    <!-- Team Names -->
+                    <div class="row mb-4">
+                        <div class="col-md-6 mb-3">
+                            <label for="team1Name" class="form-label">Team 1 Name</label>
+                            <input type="text" class="form-control" id="team1Name" placeholder="Enter Team 1 name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="team2Name" class="form-label">Team 2 Name</label>
+                            <input type="text" class="form-control" id="team2Name" placeholder="Enter Team 2 name" required>
+                        </div>
+                    </div>
+
+                    <!-- Team 1 Players -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-users me-2"></i>Team 1 Players (Select 11)
+                            </h6>
+                            <div class="row" id="team1Players">
+                                <!-- Team 1 player selects will be generated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Team 2 Players -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-users me-2"></i>Team 2 Players (Select 11)
+                            </h6>
+                            <div class="row" id="team2Players">
+                                <!-- Team 2 player selects will be generated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Match Details -->
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="venueSelect" class="form-label">Venue</label>
+                            <select class="form-select" id="venueSelect" required>
+                                <option value="">Select Venue...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="formatSelect" class="form-label">Format</label>
+                            <select class="form-select" id="formatSelect" required>
+                                <option value="">Select Format...</option>
+                                <option value="Test">Test</option>
+                                <option value="ODI">ODI</option>
+                                <option value="T20">T20</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="tossWinnerSelect" class="form-label">Toss Winner</label>
+                            <select class="form-select" id="tossWinnerSelect">
+                                <option value="">Unknown</option>
+                                <option value="team1">Team 1</option>
+                                <option value="team2">Team 2</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="tossDecisionSelect" class="form-label">Toss Decision</label>
+                            <select class="form-select" id="tossDecisionSelect">
+                                <option value="bat">Bat</option>
+                                <option value="field">Field</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-magic me-2"></i>Predict Match Outcome
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prediction Results -->
+<div id="predictionResults" style="display: none;">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-trophy text-warning me-2"></i>
+                        Prediction Results
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <div class="prediction-card team1-prediction">
+                                <div class="team-name" id="team1Name">Team 1</div>
+                                <div class="win-probability" id="team1Probability">50%</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" id="team1Bar" style="width: 50%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="prediction-card team2-prediction">
+                                <div class="team-name" id="team2Name">Team 2</div>
+                                <div class="win-probability" id="team2Probability">50%</div>
+                                <div class="probability-bar">
+                                    <div class="probability-fill" id="team2Bar" style="width: 50%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="prediction-summary">
+                                <h6 class="text-center mb-3">
+                                    <i class="fas fa-crown text-warning me-2"></i>
+                                    Predicted Winner: <span id="predictedWinner" class="text-primary">-</span>
+                                </h6>
+                                <p class="text-center text-muted">
+                                    Confidence Level: <span id="confidenceLevel" class="fw-bold">-</span>%
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 10 Key Battles -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-fire text-danger me-2"></i>
+                        10 Key Battles to Watch
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="keyBattles" class="row">
+                        <!-- Key battles will be populated here -->
+                    </div>
+                    <div id="expectedScores" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Detailed Analysis -->
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-pie text-info me-2"></i>
+                        Key Factors
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="keyFactors">
+                        <!-- Key factors will be populated here -->
+                    </div>
+                    <div id="momImportance" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6 mb-4">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-history text-success me-2"></i>
+                        Head-to-Head Record
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="headToHeadRecord">
+                        <!-- H2H record will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-map-marker-alt text-warning me-2"></i>
+                        Venue Analysis
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="venueAnalysis">
+                        <!-- Venue analysis will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6 mb-4">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-coins text-primary me-2"></i>
+                        Toss Impact
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="tossImpact">
+                        <!-- Toss impact will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prediction History -->
+<div class="row">
+    <div class="col-12">
+        <div class="card modern-card">
+            <div class="card-header bg-transparent">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-clock text-secondary me-2"></i>
+                    Recent Predictions
+                </h6>
+            </div>
+            <div class="card-body">
+                <div id="predictionHistory">
+                    <p class="text-muted text-center">No predictions made yet. Make your first prediction above!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.prediction-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+    color: white;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.team1-prediction {
+    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+}
+
+.team2-prediction {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+}
+
+.team-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.win-probability {
+    font-size: 3rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+}
+
+.probability-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.probability-fill {
+    height: 100%;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 4px;
+}
+
+.prediction-summary {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.factor-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+}
+
+.factor-importance {
+    font-size: 0.85rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--primary-color);
+    color: white;
+    border-radius: 4px;
+}
+
+/* Ensure no motion effects on prediction page */
+.card, .prediction-card, .form-control, .form-select, .btn {
+    transition: none !important;
+    transform: none !important;
+}
+
+.card:hover, .prediction-card:hover, .form-control:hover, .form-select:hover, .btn:hover {
+    transition: none !important;
+    transform: none !important;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Win Prediction JavaScript
+let predictionHistory = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializePredictionPage();
+});
+
+async function initializePredictionPage() {
+    try {
+        await loadPredictionData();
+        setupPredictionEventListeners();
+        loadPredictionHistory();
+    } catch (error) {
+        console.error('Error initializing prediction page:', error);
+        CricketAnalytics.showAlert('Error loading data. Please refresh the page.', 'danger');
+    }
+}
+
+async function loadPredictionData() {
+    try {
+        const [playersRes, venuesRes] = await Promise.all([
+            axios.get('/api/data/players'),
+            axios.get('/api/all-venues')
+        ]);
+        
+        const players = playersRes.data.players.sort();
+        const venues = venuesRes.data.venues.sort();
+        
+        // Generate player selection dropdowns for both teams
+        generatePlayerSelects('team1Players', players, 1);
+        generatePlayerSelects('team2Players', players, 2);
+        
+        // Populate venue select
+        const venueSelect = document.getElementById('venueSelect');
+        venues.forEach(venue => {
+            const option = document.createElement('option');
+            option.value = venue;
+            option.textContent = venue;
+            venueSelect.appendChild(option);
+        });
+        
+        console.log('Prediction data loaded successfully');
+    } catch (error) {
+        console.error('Error loading prediction data:', error);
+        CricketAnalytics.showAlert('Error loading data. Please try again.', 'danger');
+    }
+}
+
+function generatePlayerSelects(containerId, players, teamNumber) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    
+    // Create a datalist with all players for autocomplete
+    const datalistId = `players-datalist-${teamNumber}`;
+    let existingDatalist = document.getElementById(datalistId);
+    if (existingDatalist) {
+        existingDatalist.remove();
+    }
+    
+    const datalist = document.createElement('datalist');
+    datalist.id = datalistId;
+    players.forEach(player => {
+        const option = document.createElement('option');
+        option.value = player;
+        datalist.appendChild(option);
+    });
+    document.body.appendChild(datalist);
+    
+    for (let i = 1; i <= 11; i++) {
+        const col = document.createElement('div');
+        col.className = 'col-md-4 col-sm-6 mb-3';
+        
+        const label = document.createElement('label');
+        label.className = 'form-label';
+        label.textContent = `Player ${i}`;
+        
+        // Create input with datalist for autocomplete + custom entry
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control';
+        input.id = `team${teamNumber}_player${i}`;
+        input.placeholder = `Enter or select Player ${i}...`;
+        input.setAttribute('list', datalistId);
+        input.required = true;
+        
+        // Add validation feedback
+        const feedback = document.createElement('div');
+        feedback.className = 'invalid-feedback';
+        feedback.textContent = `Please enter player ${i} name`;
+        
+        col.appendChild(label);
+        col.appendChild(input);
+        col.appendChild(feedback);
+        container.appendChild(col);
+    }
+}
+
+function setupPredictionEventListeners() {
+    // Update toss winner options when team names are entered
+    document.getElementById('team1Name').addEventListener('input', updateTossOptions);
+    document.getElementById('team2Name').addEventListener('input', updateTossOptions);
+    
+    // Form submission
+    document.getElementById('predictionForm').addEventListener('submit', handlePredictionSubmit);
+}
+
+function updateTossOptions() {
+    const team1 = document.getElementById('team1Name').value;
+    const team2 = document.getElementById('team2Name').value;
+    const tossSelect = document.getElementById('tossWinnerSelect');
+    
+    // Clear existing options except "Unknown"
+    tossSelect.innerHTML = '<option value="">Unknown</option>';
+    
+    if (team1) {
+        const option1 = document.createElement('option');
+        option1.value = team1;
+        option1.textContent = team1;
+        tossSelect.appendChild(option1);
+    }
+    
+    if (team2) {
+        const option2 = document.createElement('option');
+        option2.value = team2;
+        option2.textContent = team2;
+        tossSelect.appendChild(option2);
+    }
+}
+
+async function handlePredictionSubmit(event) {
+    event.preventDefault();
+    
+    // Collect team names
+    const team1Name = document.getElementById('team1Name').value;
+    const team2Name = document.getElementById('team2Name').value;
+    
+    // Collect all selected players for both teams
+    const team1Players = [];
+    const team2Players = [];
+    
+    for (let i = 1; i <= 11; i++) {
+        const team1Player = document.getElementById(`team1_player${i}`).value;
+        const team2Player = document.getElementById(`team2_player${i}`).value;
+        
+        if (team1Player) team1Players.push(team1Player);
+        if (team2Player) team2Players.push(team2Player);
+    }
+    
+    const formData = {
+        team1: team1Name,
+        team2: team2Name,
+        team1_players: team1Players,
+        team2_players: team2Players,
+        venue: document.getElementById('venueSelect').value,
+        format: document.getElementById('formatSelect').value,
+        toss_winner: document.getElementById('tossWinnerSelect').value || null,
+        toss_decision: document.getElementById('tossDecisionSelect').value
+    };
+    
+    // Validation
+    if (!formData.team1 || !formData.team2 || !formData.venue || !formData.format) {
+        CricketAnalytics.showAlert('Please fill in all required fields.', 'warning');
+        return;
+    }
+    
+    if (formData.team1 === formData.team2) {
+        CricketAnalytics.showAlert('Please select different teams.', 'warning');
+        return;
+    }
+    
+    if (team1Players.length === 0 || team2Players.length === 0) {
+        CricketAnalytics.showAlert('Please select at least one player for each team.', 'warning');
+        return;
+    }
+    
+    try {
+        CricketAnalytics.showLoading();
+        
+        const response = await axios.post('/api/predict-win', formData);
+        
+        displayPredictionResults(response.data, formData);
+        savePredictionToHistory(response.data, formData);
+        
+        CricketAnalytics.hideLoading();
+        
+    } catch (error) {
+        console.error('Error making prediction:', error);
+        CricketAnalytics.showAlert('Error making prediction. Please try again.', 'danger');
+        CricketAnalytics.hideLoading();
+    }
+}
+
+function displayPredictionResults(prediction, formData) {
+    if (prediction.error) {
+        CricketAnalytics.showAlert(prediction.error, 'warning');
+        
+        // Show fallback prediction if available
+        if (prediction.fallback_prediction) {
+            displayFallbackPrediction(prediction.fallback_prediction, formData);
+        }
+        return;
+    }
+    
+    const predictions = prediction.predictions;
+    
+    // Show results container
+    document.getElementById('predictionResults').style.display = 'block';
+    
+    // Update team names and probabilities
+    document.getElementById('team1Name').textContent = formData.team1;
+    document.getElementById('team2Name').textContent = formData.team2;
+    document.getElementById('team1Probability').textContent = `${predictions.team1_win_probability}%`;
+    document.getElementById('team2Probability').textContent = `${predictions.team2_win_probability}%`;
+    
+    // Update probability bars
+    document.getElementById('team1Bar').style.width = `${predictions.team1_win_probability}%`;
+    document.getElementById('team2Bar').style.width = `${predictions.team2_win_probability}%`;
+    
+    // Update prediction summary
+    document.getElementById('predictedWinner').textContent = predictions.predicted_winner;
+    document.getElementById('confidenceLevel').textContent = predictions.confidence;
+    
+    // Update detailed analysis
+    updateKeyFactors(prediction.factors || {});
+    updateHeadToHeadRecord(prediction.historical_h2h || {});
+    updateVenueAnalysis(prediction.venue_analysis || {});
+    updateTossImpact(prediction.toss_impact || {});
+    updateExpectedScores(prediction.expected || {});
+    updateKeyBattles(prediction.key_battles || []);
+    updateMoMImportance(prediction.mom_importance || {});
+    
+    // Scroll to results
+    document.getElementById('predictionResults').scrollIntoView({ behavior: 'smooth' });
+}
+function updateExpectedScores(expected) {
+    const div = document.getElementById('expectedScores');
+    if (!expected.team1 && !expected.team2) {
+        div.innerHTML = '';
+        return;
+    }
+    const t1 = expected.team1 || {};
+    const t2 = expected.team2 || {};
+    div.innerHTML = `
+        <div class="alert alert-secondary">
+            <div class="row text-center">
+                <div class="col-md-6"><strong>Expected ${t1.name || 'Team 1'}:</strong> ${t1.avg_score || '-'} / wkts ${t1.avg_wickets || '-'}</div>
+                <div class="col-md-6"><strong>Expected ${t2.name || 'Team 2'}:</strong> ${t2.avg_score || '-'} / wkts ${t2.avg_wickets || '-'}</div>
+            </div>
+        </div>`;
+}
+
+function updateKeyBattles(battles) {
+    const grid = document.getElementById('keyBattles');
+    if (!Array.isArray(battles) || battles.length === 0) {
+        grid.innerHTML = '<p class="text-muted">No key battles available.</p>';
+        return;
+    }
+    grid.innerHTML = battles.slice(0, 10).map(b => `
+        <div class="col-md-6 mb-2">
+            <div class="d-flex justify-content-between p-2 bg-light rounded">
+                <span>${b.batter} vs ${b.bowler}</span>
+                <span>${b.stats || ''}</span>
+            </div>
+        </div>`).join('');
+}
+
+function updateMoMImportance(importance) {
+    const div = document.getElementById('momImportance');
+    if (!importance || Object.keys(importance).length === 0) {
+        div.innerHTML = '';
+        return;
+    }
+    const items = Object.entries(importance)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0, 10)
+        .map(([player, pct]) => `<div class="d-flex justify-content-between"><span>${player}</span><span>${pct}%</span></div>`) 
+        .join('');
+    div.innerHTML = `<h6 class="mt-3">Man of the Match Importance</h6>${items}`;
+}
+
+function displayFallbackPrediction(fallback, formData) {
+    document.getElementById('predictionResults').style.display = 'block';
+    
+    document.getElementById('team1Name').textContent = formData.team1;
+    document.getElementById('team2Name').textContent = formData.team2;
+    document.getElementById('team1Probability').textContent = `${fallback.team1_win_probability}%`;
+    document.getElementById('team2Probability').textContent = `${fallback.team2_win_probability}%`;
+    
+    document.getElementById('team1Bar').style.width = `${fallback.team1_win_probability}%`;
+    document.getElementById('team2Bar').style.width = `${fallback.team2_win_probability}%`;
+    
+    document.getElementById('predictedWinner').textContent = fallback.predicted_winner;
+    document.getElementById('confidenceLevel').textContent = fallback.confidence;
+    
+    // Show note about fallback prediction
+    const noteHtml = `
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            ${fallback.note || 'Prediction based on simplified analysis.'}
+        </div>
+    `;
+    
+    document.getElementById('keyFactors').innerHTML = noteHtml;
+    document.getElementById('predictionResults').scrollIntoView({ behavior: 'smooth' });
+}
+
+function updateKeyFactors(factors) {
+    const factorsDiv = document.getElementById('keyFactors');
+    
+    if (Object.keys(factors).length === 0) {
+        factorsDiv.innerHTML = '<p class="text-muted">No factor analysis available.</p>';
+        return;
+    }
+    
+    const factorsHtml = Object.entries(factors)
+        .slice(0, 5) // Show top 5 factors
+        .map(([factor, importance]) => `
+            <div class="factor-item">
+                <span class="factor-name">${formatFactorName(factor)}</span>
+                <span class="factor-importance">${(importance * 100).toFixed(1)}%</span>
+            </div>
+        `).join('');
+    
+    factorsDiv.innerHTML = factorsHtml;
+}
+
+function updateHeadToHeadRecord(h2h) {
+    const h2hDiv = document.getElementById('headToHeadRecord');
+    
+    if (!h2h.total_matches || h2h.total_matches === 0) {
+        h2hDiv.innerHTML = '<p class="text-muted">No head-to-head data available.</p>';
+        return;
+    }
+    
+    h2hDiv.innerHTML = `
+        <div class="row text-center">
+            <div class="col-4">
+                <h4 class="text-primary">${h2h.team1_wins || 0}</h4>
+                <p class="text-muted mb-0">Team 1 Wins</p>
+            </div>
+            <div class="col-4">
+                <h4 class="text-muted">${h2h.total_matches}</h4>
+                <p class="text-muted mb-0">Total Matches</p>
+            </div>
+            <div class="col-4">
+                <h4 class="text-success">${h2h.team2_wins || 0}</h4>
+                <p class="text-muted mb-0">Team 2 Wins</p>
+            </div>
+        </div>
+        <div class="mt-3">
+            <p class="text-center text-muted">
+                Team 1 Win Percentage: <strong>${h2h.team1_win_percentage || 0}%</strong>
+            </p>
+        </div>
+    `;
+}
+
+function updateVenueAnalysis(venue) {
+    const venueDiv = document.getElementById('venueAnalysis');
+    
+    if (!venue.total_matches || venue.total_matches === 0) {
+        venueDiv.innerHTML = '<p class="text-muted">No venue data available.</p>';
+        return;
+    }
+    
+    venueDiv.innerHTML = `
+        <div class="row">
+            <div class="col-6 text-center">
+                <h5 class="text-primary">${venue.bat_first_advantage || 50}%</h5>
+                <p class="text-muted mb-0">Bat First Advantage</p>
+            </div>
+            <div class="col-6 text-center">
+                <h5 class="text-success">${venue.bowl_first_advantage || 50}%</h5>
+                <p class="text-muted mb-0">Bowl First Advantage</p>
+            </div>
+        </div>
+        <div class="mt-3 text-center">
+            <p class="text-muted">Based on ${venue.total_matches} matches at this venue</p>
+        </div>
+    `;
+}
+
+function updateTossImpact(toss) {
+    const tossDiv = document.getElementById('tossImpact');
+    
+    if (!toss.toss_advantage_percentage) {
+        tossDiv.innerHTML = '<p class="text-muted">No toss impact data available.</p>';
+        return;
+    }
+    
+    tossDiv.innerHTML = `
+        <div class="text-center">
+            <h4 class="text-warning">${toss.toss_advantage_percentage}%</h4>
+            <p class="text-muted mb-2">Toss Winner Match Win Rate</p>
+            <span class="badge bg-${getTossImpactColor(toss.toss_impact)}">${toss.toss_impact} Impact</span>
+        </div>
+    `;
+}
+
+function formatFactorName(factor) {
+    const names = {
+        'team1_recent_form': 'Team 1 Recent Form',
+        'team2_recent_form': 'Team 2 Recent Form',
+        'venue_team1_performance': 'Team 1 Venue Record',
+        'venue_team2_performance': 'Team 2 Venue Record',
+        'toss_winner': 'Toss Winner',
+        'format': 'Match Format'
+    };
+    return names[factor] || factor;
+}
+
+function getTossImpactColor(impact) {
+    switch (impact) {
+        case 'High': return 'danger';
+        case 'Medium': return 'warning';
+        case 'Low': return 'success';
+        default: return 'secondary';
+    }
+}
+
+function savePredictionToHistory(prediction, formData) {
+    const historyItem = {
+        timestamp: new Date().toISOString(),
+        teams: `${formData.team1} vs ${formData.team2}`,
+        venue: formData.venue,
+        format: formData.format,
+        predicted_winner: prediction.predictions?.predicted_winner || prediction.fallback_prediction?.predicted_winner,
+        confidence: prediction.predictions?.confidence || prediction.fallback_prediction?.confidence
+    };
+    
+    predictionHistory.unshift(historyItem);
+    predictionHistory = predictionHistory.slice(0, 10); // Keep only last 10
+    
+    localStorage.setItem('cricketPredictionHistory', JSON.stringify(predictionHistory));
+    updatePredictionHistoryDisplay();
+}
+
+function loadPredictionHistory() {
+    const saved = localStorage.getItem('cricketPredictionHistory');
+    if (saved) {
+        predictionHistory = JSON.parse(saved);
+        updatePredictionHistoryDisplay();
+    }
+}
+
+function updatePredictionHistoryDisplay() {
+    const historyDiv = document.getElementById('predictionHistory');
+    
+    if (predictionHistory.length === 0) {
+        historyDiv.innerHTML = '<p class="text-muted text-center">No predictions made yet. Make your first prediction above!</p>';
+        return;
+    }
+    
+    const historyHtml = predictionHistory.map(item => `
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+            <div>
+                <strong>${item.teams}</strong>
+                <small class="text-muted d-block">${item.venue} • ${item.format}</small>
+            </div>
+            <div class="text-end">
+                <span class="badge bg-primary">${item.predicted_winner}</span>
+                <small class="text-muted d-block">${item.confidence}% confidence</small>
+            </div>
+        </div>
+    `).join('');
+    
+    historyDiv.innerHTML = historyHtml;
+}
+</script>
+{% endblock %}

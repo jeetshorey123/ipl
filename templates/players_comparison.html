@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+
+{% block title %}Player Comparison{% endblock %}
+
+{% block extra_css %}
+<style>
+    .comparison-container {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 15px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    .player-card {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    .comparison-stat {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .comparison-stat:last-child {
+        border-bottom: none;
+    }
+    
+    .stat-label {
+        font-weight: 500;
+        color: var(--text-secondary);
+        flex: 1;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-weight: 600;
+        color: var(--primary-color);
+        font-size: 1.1em;
+        min-width: 80px;
+        text-align: center;
+    }
+    
+    .stat-value.winner {
+        color: #28a745;
+        background: rgba(40, 167, 69, 0.1);
+        padding: 0.25rem 0.5rem;
+        border-radius: 5px;
+    }
+    
+    .head-to-head-section {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .h2h-stat-card {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .vs-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 1rem;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--accent-color);
+    }
+    
+    .multi-select-dropdown {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+    }
+    
+    .multi-select-button {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: var(--text-color);
+        padding: 0.6rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        width: 100%;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .multi-select-options {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(13, 27, 42, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 8px;
+        margin-top: 2px;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+    }
+    
+    .multi-select-option {
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        transition: background-color 0.2s;
+    }
+    
+    .multi-select-option:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .multi-select-option input[type="checkbox"] {
+        margin-right: 0.5rem;
+    }
+    
+    .match-result-summary {
+        text-align: center;
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    
+    .result-stat {
+        display: inline-block;
+        margin: 0 1rem;
+        padding: 0.5rem 1rem;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="text-gradient mb-4">Player Comparison & Head-to-Head Analysis</h1>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-12">
+            <div class="comparison-container">
+                <div class="row">
+                    <div class="col-md-2">
+                        <label for="player1Search" class="form-label">Player 1</label>
+                        <input type="text" class="form-control glass-input" id="player1Search" 
+                               placeholder="Enter first player..." list="playersList1">
+                        <datalist id="playersList1"></datalist>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="player2Search" class="form-label">Player 2</label>
+                        <input type="text" class="form-control glass-input" id="player2Search" 
+                               placeholder="Enter second player..." list="playersList2">
+                        <datalist id="playersList2"></datalist>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="formatFilter" class="form-label">Format</label>
+                        <select class="form-select glass-input" id="formatFilter">
+                            <option value="">All Formats</option>
+                            <option value="ODI">ODI</option>
+                            <option value="T20I">T20I</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="inningsTypeFilter" class="form-label">Innings Type</label>
+                        <select class="form-select glass-input" id="inningsTypeFilter">
+                            <option value="">Overall</option>
+                            <option value="batting_first">Batting First</option>
+                            <option value="bowling_first">Bowling First</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="venueFilter" class="form-label">Venue</label>
+                        <select class="form-select glass-input" id="venueFilter">
+                            <option value="">All Venues</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1">
+                        <label for="yearFilter" class="form-label">Years</label>
+                        <div class="multi-select-dropdown">
+                            <div class="multi-select-button" id="yearFilterButton">
+                                <span id="yearFilterText">All Years</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                            <div class="multi-select-options" id="yearFilterOptions">
+                                <!-- Years will be loaded dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button class="btn btn-primary glass-btn w-100" id="compareButton">
+                            <i class="fas fa-balance-scale me-2"></i>Compare
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-2">
+                        <label for="matchCategoryFilter" class="form-label">Competition</label>
+                        <select class="form-select glass-input" id="matchCategoryFilter">
+                            <option value="">All Matches</option>
+                            <option value="ipl">IPL</option>
+                            <option value="international">International</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="battingOrderFilter" class="form-label">Batting Order</label>
+                        <select class="form-select glass-input" id="battingOrderFilter">
+                            <option value="">Both</option>
+                            <option value="first">1st Innings</option>
+                            <option value="second">2nd Innings</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="countryFilter" class="form-label">Country</label>
+                        <select class="form-select glass-input" id="countryFilter">
+                            <option value="">All Countries</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row" style="display: none;" id="activeFilters">
+        <div class="col-12">
+            <div class="comparison-container">
+                <h6><i class="fas fa-filter me-2"></i>Active Filters</h6>
+                <div id="filterTags"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="comparisonResults" style="display: none;">
+        <!-- Player Names Header -->
+        <div class="row mb-4">
+            <div class="col-5">
+                <div class="player-card text-center">
+                    <h3 class="text-gradient" id="player1Name">Player 1</h3>
+                </div>
+            </div>
+            <div class="col-2 d-flex align-items-center justify-content-center">
+                <div class="vs-indicator">VS</div>
+            </div>
+            <div class="col-5">
+                <div class="player-card text-center">
+                    <h3 class="text-gradient" id="player2Name">Player 2</h3>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Head-to-Head Summary -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="player-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-handshake me-2"></i>Head-to-Head Summary</h4>
+                    <div id="h2hSummary"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Head-to-Head Performance -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="player-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-crosshairs me-2"></i>Player 1 vs Player 2</h4>
+                    <div id="player1VsPlayer2"></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="player-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-crosshairs me-2"></i>Player 2 vs Player 1</h4>
+                    <div id="player2VsPlayer1"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Overall Statistics Comparison -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="player-card">
+                    <h4 class="text-gradient mb-3"><i class="fas fa-chart-bar me-2"></i>Overall Statistics Comparison</h4>
+                    <div id="overallComparison"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Phase-wise Comparison -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="player-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h4 class="text-gradient mb-0"><i class="fas fa-clock me-2"></i>Phase-wise Comparison</h4>
+                        <div id="phaseComparisonControls" class="btn-group" role="group" aria-label="Phase role selection">
+                            <input type="radio" class="btn-check" name="phaseRole" id="roleP1Bat" autocomplete="off" checked>
+                            <label class="btn btn-outline-primary" for="roleP1Bat">P1 Bat vs P2 Bowl</label>
+                            <input type="radio" class="btn-check" name="phaseRole" id="roleP2Bat" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="roleP2Bat">P2 Bat vs P1 Bowl</label>
+                        </div>
+                    </div>
+                    <div id="phaseComparison"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Individual Statistics -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="player-card">
+                    <h4 class="text-gradient mb-3" id="player1StatsTitle">Player 1 Statistics</h4>
+                    <div id="player1Stats"></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="player-card">
+                    <h4 class="text-gradient mb-3" id="player2StatsTitle">Player 2 Statistics</h4>
+                    <div id="player2Stats"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="loadingSpinner" style="display: none;">
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Comparing players and analyzing head-to-head data...</p>
+        </div>
+    </div>
+    
+    <div id="errorMessage" style="display: none;">
+        <div class="alert alert-danger glass-alert" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <span id="errorText"></span>
+        </div>
+    </div>
+
+    <!-- Shared Player List -->
+    <datalist id="playersList">
+        <!-- Player options will be populated dynamically -->
+    </datalist>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/player_comparison.js') }}"></script>
+{% endblock %}

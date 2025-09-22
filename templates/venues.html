@@ -1,0 +1,973 @@
+{% extends "base.html" %}
+
+{% block title %}Venue Analysis - Cricket Analytics Hub{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-gradient mb-3">
+            <i class="fas fa-map-marker-alt me-2"></i>
+            Venue Analysis
+        </h2>
+        <p class="text-muted">Comprehensive venue statistics and ground characteristics</p>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card modern-card">
+            <div class="card-header bg-transparent">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-filter text-primary me-2"></i>
+                    Filters
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="venueSelect" class="form-label">Select Venue</label>
+                        <select class="form-select" id="venueSelect">
+                            <option value="">All Venues</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="formatFilter" class="form-label">Format</label>
+                        <select class="form-select" id="formatFilter">
+                            <option value="">All Formats</option>
+                            <option value="Test">Test</option>
+                            <option value="ODI">ODI</option>
+                            <option value="T20">T20</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="countryFilter" class="form-label">Country</label>
+                        <select class="form-select" id="countryFilter">
+                            <option value="">All Countries</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="venueYearsFilter" class="form-label">Years</label>
+                        <select class="form-select" id="venueYearsFilter" multiple></select>
+                        <small class="text-muted">Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                    <div class="col-12">
+                        <button type="button" class="btn btn-primary" onclick="applyVenueFilters()">
+                            <i class="fas fa-search me-2"></i>Analyze Venues
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary ms-2" onclick="clearVenueFilters()">
+                            <i class="fas fa-times me-2"></i>Clear Filters
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Venue Overview Cards -->
+<div id="venueOverview" class="row mb-4">
+    <!-- Overview cards will be populated here -->
+</div>
+
+<!-- Venue Details -->
+<div id="venueDetails" style="display: none;">
+    <!-- Selected Venue Information -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h5 class="card-title mb-0" id="selectedVenueName">
+                        <i class="fas fa-stadium text-primary me-2"></i>
+                        Selected Venue
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div id="venueBasicInfo">
+                                <!-- Basic venue info -->
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div id="venueMatchStats">
+                                <!-- Match statistics -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Batting vs Bowling Conditions -->
+    <div class="row mb-4">
+        <div class="col-lg-6 mb-4">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-bar text-success me-2"></i>
+                        Batting Conditions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="battingChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6 mb-4">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-line text-danger me-2"></i>
+                        Bowling Conditions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="bowlingChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toss Impact Analysis -->
+    <div class="row mb-4">
+        <div class="col-lg-12 mb-4">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-coins text-warning me-2"></i>
+                        Toss Impact Analysis
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="tossChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Team Performance at Venue -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-trophy text-primary me-2"></i>
+                        Team Performance at This Venue
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="teamPerformanceTable">
+                        <!-- Team performance table will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Format-wise Analysis -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-chart-area text-secondary me-2"></i>
+                        Format-wise Performance
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <ul class="nav nav-tabs" id="formatTabs" role="tablist">
+                        <!-- Format tabs will be populated here -->
+                    </ul>
+                    <div class="tab-content mt-3" id="formatTabContent">
+                        <!-- Format content will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Venue Comparison Modal -->
+<div class="modal fade" id="venueComparisonModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-balance-scale me-2"></i>
+                    Venue Comparison
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="venue1Compare" class="form-label">Venue 1</label>
+                        <select class="form-select" id="venue1Compare">
+                            <option value="">Select Venue 1</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="venue2Compare" class="form-label">Venue 2</label>
+                        <select class="form-select" id="venue2Compare">
+                            <option value="">Select Venue 2</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary mb-3" onclick="compareVenues()">
+                    <i class="fas fa-chart-bar me-2"></i>Compare Venues
+                </button>
+                <div id="comparisonResults">
+                    <!-- Comparison results will be shown here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.venue-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    transition: none;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+}
+
+.venue-card:hover { transform: none; box-shadow: none; border-color: rgba(255, 255, 255, 0.1); }
+
+.venue-card.selected {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #4361ee 100%);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.venue-stats {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.venue-stat {
+    text-align: center;
+    flex: 1;
+    min-width: 100px;
+}
+
+.venue-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.venue-card.selected .venue-stat-value {
+    color: white;
+}
+
+.venue-stat-label {
+    font-size: 0.75rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.venue-card.selected .venue-stat-label {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.team-performance-row {
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    transition: none;
+}
+
+.team-performance-row:hover { background: rgba(0, 0, 0, 0.02); }
+
+.comparison-venue {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.comparison-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.comparison-stat:last-child {
+    border-bottom: none;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Venue Analysis JavaScript
+let venueData = [];
+let selectedVenue = null;
+let venueCharts = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeVenuePage();
+});
+
+async function initializeVenuePage() {
+    try {
+        await loadVenueData();
+        await loadVenueYears();
+        await loadVenueOverview();
+        setupVenueEventListeners();
+    } catch (error) {
+        console.error('Error initializing venue page:', error);
+        CricketAnalytics.showAlert('Error loading venue data. Please refresh the page.', 'danger');
+    }
+}
+
+async function loadVenueData() {
+    try {
+        const [venuesRes, countriesRes] = await Promise.all([
+            axios.get('/api/all-venues'),
+            axios.get('/api/all-countries')
+        ]);
+        
+        const venues = venuesRes.data.venues.sort();
+        const countries = countriesRes.data.countries.sort();
+        
+        // Populate venue select
+        const venueSelect = document.getElementById('venueSelect');
+        venues.forEach(venue => {
+            const option = document.createElement('option');
+            option.value = venue;
+            option.textContent = venue;
+            venueSelect.appendChild(option);
+        });
+        
+        // Populate comparison selects
+        ['venue1Compare', 'venue2Compare'].forEach(selectId => {
+            const select = document.getElementById(selectId);
+            venues.forEach(venue => {
+                const option = document.createElement('option');
+                option.value = venue;
+                option.textContent = venue;
+                select.appendChild(option);
+            });
+        });
+        
+        // Populate country select
+        const countrySelect = document.getElementById('countryFilter');
+        countries.forEach(country => {
+            const option = document.createElement('option');
+            option.value = country;
+            option.textContent = country;
+            countrySelect.appendChild(option);
+        });
+        
+    } catch (error) {
+        console.error('Error loading venue data:', error);
+        throw error;
+    }
+}
+
+async function loadVenueYears() {
+    try {
+        const res = await axios.get('/api/data/years');
+        const years = res.data.years || [];
+        const sel = document.getElementById('venueYearsFilter');
+        years.forEach(y => {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            sel.appendChild(opt);
+        });
+    } catch (error) {
+        console.error('Error loading years:', error);
+    }
+}
+
+async function loadVenueOverview() {
+    try {
+        const response = await axios.get('/api/venue-overview');
+        venueData = response.data.venues;
+        displayVenueOverview(venueData);
+    } catch (error) {
+        console.error('Error loading venue overview:', error);
+        document.getElementById('venueOverview').innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error loading venue data. Please try again.
+                </div>
+            </div>
+        `;
+    }
+}
+
+function displayVenueOverview(venues) {
+    const overviewDiv = document.getElementById('venueOverview');
+    
+    if (!venues || venues.length === 0) {
+        overviewDiv.innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    No venue data available.
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    const venueCards = venues.map(venue => `
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="venue-card" onclick="selectVenue('${venue.venue}')">
+                <h5 class="mb-2">${venue.venue}</h5>
+                <p class="text-muted mb-3">${venue.country || 'Unknown Country'}</p>
+                <div class="venue-stats">
+                    <div class="venue-stat">
+                        <div class="venue-stat-value">${venue.total_matches || 0}</div>
+                        <div class="venue-stat-label">Matches</div>
+                    </div>
+                    <div class="venue-stat">
+                        <div class="venue-stat-value">${venue.avg_score || 0}</div>
+                        <div class="venue-stat-label">Avg Score</div>
+                    </div>
+                    <div class="venue-stat">
+                        <div class="venue-stat-value">${venue.bat_first_wins || 0}%</div>
+                        <div class="venue-stat-label">Bat First</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    overviewDiv.innerHTML = venueCards;
+}
+
+function setupVenueEventListeners() {
+    // Add event listeners for filters if needed
+    document.getElementById('venueSelect').addEventListener('change', function() {
+        if (this.value) {
+            selectVenue(this.value);
+        }
+    });
+}
+
+async function selectVenue(venueName) {
+    selectedVenue = venueName;
+    
+    // Update visual selection
+    document.querySelectorAll('.venue-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    // Find and highlight selected venue card
+    const venueCards = document.querySelectorAll('.venue-card');
+    venueCards.forEach(card => {
+        if (card.querySelector('h5').textContent === venueName) {
+            card.classList.add('selected');
+        }
+    });
+    
+    // Load detailed venue analysis
+    try {
+        CricketAnalytics.showLoading();
+        await loadVenueDetails(venueName);
+        document.getElementById('venueDetails').style.display = 'block';
+        document.getElementById('venueDetails').scrollIntoView({ behavior: 'smooth' });
+        CricketAnalytics.hideLoading();
+    } catch (error) {
+        console.error('Error loading venue details:', error);
+        CricketAnalytics.showAlert('Error loading venue details. Please try again.', 'danger');
+        CricketAnalytics.hideLoading();
+    }
+}
+
+async function loadVenueDetails(venueName) {
+    try {
+        const response = await axios.get(`/api/venue-analysis/${encodeURIComponent(venueName)}`);
+        const venueAnalysis = response.data;
+        
+        displayVenueDetails(venueAnalysis);
+        createVenueCharts(venueAnalysis);
+        
+    } catch (error) {
+        console.error('Error loading venue details:', error);
+        throw error;
+    }
+}
+
+function displayVenueDetails(analysis) {
+    // Update venue name
+    document.getElementById('selectedVenueName').innerHTML = `
+        <i class="fas fa-stadium text-primary me-2"></i>
+        ${analysis.venue_name}
+    `;
+    
+    // Basic venue info
+    const cities = (analysis.general && analysis.general.cities) ? Object.keys(analysis.general.cities) : [];
+    const country = cities.length ? cities[0] : 'Unknown';
+    const firstMatch = analysis.general?.date_range?.first_match || 'Unknown';
+    const lastMatch = analysis.general?.date_range?.last_match || 'Unknown';
+    document.getElementById('venueBasicInfo').innerHTML = `
+        <div class="row">
+            <div class="col-12 mb-3">
+                <h6 class="text-muted">Venue Information</h6>
+                <p><strong>Country/City:</strong> ${country}</p>
+                <p><strong>Total Matches:</strong> ${analysis.general?.total_matches || analysis.total_matches || 0}</p>
+                <p><strong>First Match:</strong> ${firstMatch}</p>
+                <p><strong>Last Match:</strong> ${lastMatch}</p>
+            </div>
+        </div>
+    `;
+    
+    // Match statistics
+    document.getElementById('venueMatchStats').innerHTML = `
+        <div class="row">
+            <div class="col-12 mb-3">
+                <h6 class="text-muted">Match Statistics</h6>
+                <p><strong>Average Score:</strong> ${analysis.batting?.average_score || 0}</p>
+                <p><strong>Highest Score:</strong> ${analysis.batting?.highest_score || 'N/A'}</p>
+                <p><strong>Bat First Win %:</strong> ${analysis.toss?.bat_first_win_percentage || 0}%</p>
+                <p><strong>Bowl First Win %:</strong> ${analysis.toss?.bowl_first_win_percentage || 0}%</p>
+                <p><strong>Wickets/Innings:</strong> ${analysis.bowling?.wickets_per_innings || 0}</p>
+            </div>
+        </div>
+    `;
+    
+    // Team performance table
+    displayTeamPerformanceTable(analysis.teams || {});
+    
+    // Format-wise analysis
+    displayFormatAnalysis(analysis.general?.formats || {});
+
+    // Phase-wise stats card (simple textual) - prevent duplicates
+    const oldPhase = document.getElementById('phaseStatsContainer');
+    if (oldPhase && oldPhase.parentElement) oldPhase.parentElement.remove();
+    const phaseStats = analysis.phases || {};
+    if (Object.keys(phaseStats).length) {
+        const container = document.createElement('div');
+        container.className = 'row mb-4';
+        container.innerHTML = `
+            <div class="col-12">
+                <div class="card modern-card">
+                    <div class="card-header bg-transparent">
+                        <h6 class="card-title mb-0"><i class="fas fa-layer-group text-info me-2"></i>Phase-wise Averages</h6>
+                    </div>
+                    <div class="card-body" id="phaseStatsContainer">
+                        <div id="phaseWiseStats"></div>
+                    </div>
+                </div>
+            </div>`;
+        document.getElementById('venueDetails').appendChild(container);
+        const phaseDiv = document.getElementById('phaseWiseStats');
+        let html = '';
+        for (const fmt of Object.keys(phaseStats)) {
+            html += `<h6 class="text-primary">${fmt}</h6>`;
+            for (const bucket of Object.keys(phaseStats[fmt])) {
+                const r = phaseStats[fmt][bucket];
+                html += `<div class="d-flex justify-content-between"><span>${bucket}</span><span>Avg Runs: ${r.avg_runs} • SR: ${r.strike_rate}</span></div>`;
+            }
+            html += '<hr />';
+        }
+        phaseDiv.innerHTML = html;
+    }
+}
+
+function displayTeamPerformanceTable(teamPerformance) {
+    const tableDiv = document.getElementById('teamPerformanceTable');
+    
+    const entries = Array.isArray(teamPerformance) ? teamPerformance : Object.entries(teamPerformance).map(([team, rec]) => ({ team, ...rec }));
+    if (!entries || entries.length === 0) {
+        tableDiv.innerHTML = '<p class="text-muted">No team performance data available.</p>';
+        return;
+    }
+    
+    const tableHtml = `
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Team</th>
+                        <th>Matches</th>
+                        <th>Wins</th>
+                        <th>Win %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${entries.map(team => `
+                        <tr>
+                            <td><strong>${team.team}</strong></td>
+                            <td>${team.matches}</td>
+                            <td>${team.wins}</td>
+                            <td>
+                                <span class="badge bg-${team.win_percentage >= 60 ? 'success' : team.win_percentage >= 40 ? 'warning' : 'danger'}">
+                                    ${team.win_percentage}%
+                                </span>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    tableDiv.innerHTML = tableHtml;
+}
+
+function displayFormatAnalysis(formatAnalysis) {
+    const tabsDiv = document.getElementById('formatTabs');
+    const contentDiv = document.getElementById('formatTabContent');
+    
+    if (Object.keys(formatAnalysis).length === 0) {
+        tabsDiv.innerHTML = '';
+        contentDiv.innerHTML = '<p class="text-muted">No format-wise data available.</p>';
+        return;
+    }
+    
+    const formats = Object.keys(formatAnalysis);
+    
+    // Create tabs
+    const tabsHtml = formats.map((format, index) => `
+        <li class="nav-item" role="presentation">
+            <button class="nav-link ${index === 0 ? 'active' : ''}" 
+                    id="${format}-tab" 
+                    data-bs-toggle="tab" 
+                    data-bs-target="#${format}-content" 
+                    type="button" 
+                    role="tab">
+                ${format}
+            </button>
+        </li>
+    `).join('');
+    
+    tabsDiv.innerHTML = tabsHtml;
+    
+    // Create content
+    const contentHtml = formats.map((format, index) => {
+        const matches = formatAnalysis[format];
+        return `
+            <div class="tab-pane fade ${index === 0 ? 'show active' : ''}" id="${format}-content" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h4 class="text-primary">${matches}</h4>
+                            <p class="text-muted mb-0">Matches</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    contentDiv.innerHTML = contentHtml;
+}
+
+function createVenueCharts(analysis) {
+    // Destroy existing charts
+    Object.values(venueCharts).forEach(chart => {
+        if (chart) chart.destroy();
+    });
+    
+    // Batting conditions chart
+    if (analysis.batting) {
+        venueCharts.batting = createBattingChart(analysis.batting);
+    }
+    
+    // Bowling conditions chart
+    if (analysis.bowling) {
+        venueCharts.bowling = createBowlingChart(analysis.bowling);
+    }
+    
+    // Toss impact chart
+    if (analysis.toss) {
+        venueCharts.toss = createTossChart(analysis.toss);
+    }
+}
+
+function createBattingChart(battingStats) {
+    const ctx = document.getElementById('battingChart').getContext('2d');
+    
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Average Score', 'Average Run Rate', 'Boundary %'],
+            datasets: [{
+                label: 'Batting Metrics',
+                data: [
+                    battingStats.average_score || 0,
+                    battingStats.average_run_rate || 0,
+                    battingStats.boundary_percentage || 0
+                ],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.8)',
+                    'rgba(59, 130, 246, 0.8)',
+                    'rgba(245, 158, 11, 0.8)'
+                ],
+                borderColor: [
+                    'rgb(34, 197, 94)',
+                    'rgb(59, 130, 246)',
+                    'rgb(245, 158, 11)'
+                ],
+                borderWidth: 2,
+                borderRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
+}
+
+function createBowlingChart(bowlingStats) {
+    const ctx = document.getElementById('bowlingChart').getContext('2d');
+    
+    return new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Economy Rate', 'Bowling Average', 'Wickets/Match'],
+            datasets: [{
+                label: 'Bowling Metrics',
+                data: [
+                    bowlingStats.economy_rate || 0,
+                    bowlingStats.bowling_average || 0,
+                    bowlingStats.wickets_per_match || 0
+                ],
+                borderColor: 'rgb(239, 68, 68)',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
+}
+
+function createTossChart(tossAnalysis) {
+    const ctx = document.getElementById('tossChart').getContext('2d');
+    
+    return new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Bat First Wins', 'Bowl First Wins'],
+            datasets: [{
+                data: [
+                    tossAnalysis.bat_first_win_percentage || 0,
+                    tossAnalysis.bowl_first_win_percentage || 0
+                ],
+                backgroundColor: [
+                    'rgba(245, 158, 11, 0.8)',
+                    'rgba(168, 85, 247, 0.8)'
+                ],
+                borderColor: [
+                    'rgb(245, 158, 11)',
+                    'rgb(168, 85, 247)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+async function applyVenueFilters() {
+    const filters = {
+        venue: document.getElementById('venueSelect').value,
+        format: document.getElementById('formatFilter').value,
+        country: document.getElementById('countryFilter').value,
+        years: Array.from(document.getElementById('venueYearsFilter').selectedOptions).map(o => o.value)
+    };
+    
+    try {
+        CricketAnalytics.showLoading();
+        
+        const queryParams = new URLSearchParams();
+        Object.entries(filters).forEach(([key, value]) => {
+            if (key === 'years' && Array.isArray(value) && value.length) {
+                queryParams.append('years', JSON.stringify(value));
+            } else if (value) {
+                queryParams.append(key, value);
+            }
+        });
+        
+        const response = await axios.get(`/api/venue-overview?${queryParams}`);
+        venueData = response.data.venues;
+        displayVenueOverview(venueData);
+        
+        CricketAnalytics.hideLoading();
+        
+    } catch (error) {
+        console.error('Error applying filters:', error);
+        CricketAnalytics.showAlert('Error applying filters. Please try again.', 'danger');
+        CricketAnalytics.hideLoading();
+    }
+}
+
+function clearVenueFilters() {
+    document.getElementById('venueSelect').value = '';
+    document.getElementById('formatFilter').value = '';
+    document.getElementById('countryFilter').value = '';
+    const yearsSel = document.getElementById('venueYearsFilter');
+    Array.from(yearsSel.options).forEach(o => o.selected = false);
+    
+    loadVenueOverview();
+}
+
+async function compareVenues() {
+    const venue1 = document.getElementById('venue1Compare').value;
+    const venue2 = document.getElementById('venue2Compare').value;
+    
+    if (!venue1 || !venue2) {
+        CricketAnalytics.showAlert('Please select both venues to compare.', 'warning');
+        return;
+    }
+    
+    if (venue1 === venue2) {
+        CricketAnalytics.showAlert('Please select different venues to compare.', 'warning');
+        return;
+    }
+    
+    try {
+        CricketAnalytics.showLoading();
+        
+        const [venue1Data, venue2Data] = await Promise.all([
+            axios.get(`/api/venue-analysis/${encodeURIComponent(venue1)}`),
+            axios.get(`/api/venue-analysis/${encodeURIComponent(venue2)}`)
+        ]);
+        
+        displayVenueComparison(venue1Data.data, venue2Data.data);
+        CricketAnalytics.hideLoading();
+        
+    } catch (error) {
+        console.error('Error comparing venues:', error);
+        CricketAnalytics.showAlert('Error loading venue comparison. Please try again.', 'danger');
+        CricketAnalytics.hideLoading();
+    }
+}
+
+function displayVenueComparison(venue1Data, venue2Data) {
+    const comparisonDiv = document.getElementById('comparisonResults');
+    
+    const comparisonHtml = `
+        <div class="row">
+            <div class="col-md-6">
+                <div class="comparison-venue">
+                    <h5 class="text-primary">${venue1Data.venue_name}</h5>
+                    <div class="comparison-stat">
+                        <span>Total Matches</span>
+                        <strong>${venue1Data.total_matches}</strong>
+                    </div>
+                    <div class="comparison-stat">
+                        <span>Average Score</span>
+                        <strong>${venue1Data.average_score}</strong>
+                    </div>
+                    <div class="comparison-stat">
+                        <span>Bat First Win %</span>
+                        <strong>${venue1Data.bat_first_wins}%</strong>
+                    </div>
+                    <div class="comparison-stat">
+                        <span>Bowl First Win %</span>
+                        <strong>${venue1Data.bowl_first_wins}%</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="comparison-venue">
+                    <h5 class="text-success">${venue2Data.venue_name}</h5>
+                    <div class="comparison-stat">
+                        <span>Total Matches</span>
+                        <strong>${venue2Data.total_matches}</strong>
+                    </div>
+                    <div class="comparison-stat">
+                        <span>Average Score</span>
+                        <strong>${venue2Data.average_score}</strong>
+                    </div>
+                    <div class="comparison-stat">
+                        <span>Bat First Win %</span>
+                        <strong>${venue2Data.bat_first_wins}%</strong>
+                    </div>
+                    <div class="comparison-stat">
+                        <span>Bowl First Win %</span>
+                        <strong>${venue2Data.bowl_first_wins}%</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    comparisonDiv.innerHTML = comparisonHtml;
+}
+</script>
+{% endblock %}

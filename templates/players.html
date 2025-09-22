@@ -1,0 +1,673 @@
+{% extends "base.html" %}
+
+{% block title %}Player Analysis - Cricket Analytics Hub{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-gradient mb-3">
+            <i class="fas fa-user-friends me-2"></i>
+            Player Analysis
+        </h2>
+        <p class="text-muted">Comprehensive cricket player statistics and performance analysis</p>
+    </div>
+</div>
+
+<!-- Player Search and Filters -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card modern-card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2 mb-3">
+                        <label for="playerSelect" class="form-label">Select Player</label>
+                        <select class="form-select" id="playerSelect">
+                            <option value="">Choose a player...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label for="matchCategoryFilter" class="form-label">Competition</label>
+                        <select class="form-select" id="matchCategoryFilter">
+                            <option value="">All Matches</option>
+                            <option value="ipl">IPL</option>
+                            <option value="international">International</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label for="formatFilter" class="form-label">Format</label>
+                        <select class="form-select" id="formatFilter">
+                            <option value="">All Formats</option>
+                            <option value="Test">Test</option>
+                            <option value="ODI">ODI</option>
+                            <option value="T20">T20</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label for="phaseFilter" class="form-label">Phase</label>
+                        <select class="form-select" id="phaseFilter" disabled>
+                            <option value="">All Overs</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label for="phaseRoleFilter" class="form-label">Role</label>
+                        <select class="form-select" id="phaseRoleFilter">
+                            <option value="">Overall</option>
+                            <option value="batter">Batter</option>
+                            <option value="bowler">Bowler</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label for="inningsTypeFilter" class="form-label">Innings Type</label>
+                        <select class="form-select" id="inningsTypeFilter">
+                            <option value="">Overall</option>
+                            <option value="batting_first">Batting First</option>
+                            <option value="bowling_first">Bowling First</option>
+                        </select>
+                    </div>
+                    
+                    
+                    <div class="col-md-2 mb-3">
+                        <label for="venueFilter" class="form-label">Venue</label>
+                        <select class="form-select" id="venueFilter">
+                            <option value="">All Venues</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label for="countryFilter" class="form-label">Country</label>
+                        <select class="form-select" id="countryFilter">
+                            <option value="">All Countries</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">&nbsp;</label>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-primary w-100" id="analyzePlayerBtn">
+                            <i class="fas fa-chart-line me-2"></i>Analyze
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Player Stats Dashboard -->
+<div id="playerStatsContainer" style="display: none;">
+    <!-- Player Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card modern-card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h3 class="mb-1" id="playerName">Player Name</h3>
+                            <p class="text-muted mb-0" id="playerSummary">Career Summary</p>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <button class="btn btn-outline-primary me-2" id="comparePlayerBtn">
+                                <i class="fas fa-balance-scale me-2"></i>Compare Players
+                            </button>
+                            <button class="btn btn-outline-success" id="exportStatsBtn">
+                                <i class="fas fa-download me-2"></i>Export Stats
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overall Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-2 mb-3">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon">
+                        <i class="fas fa-calendar text-primary"></i>
+                    </div>
+                    <h4 class="stats-number" id="totalMatches">-</h4>
+                    <p class="stats-label">Matches</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon">
+                        <i class="fas fa-running text-success"></i>
+                    </div>
+                    <h4 class="stats-number" id="totalRuns">-</h4>
+                    <p class="stats-label">Runs</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon">
+                        <i class="fas fa-bullseye text-warning"></i>
+                    </div>
+                    <h4 class="stats-number" id="battingAverage">-</h4>
+                    <p class="stats-label">Average</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon">
+                        <i class="fas fa-tachometer-alt text-info"></i>
+                    </div>
+                    <h4 class="stats-number" id="strikeRate">-</h4>
+                    <p class="stats-label">Strike Rate</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon">
+                        <i class="fas fa-bowling-ball text-danger"></i>
+                    </div>
+                    <h4 class="stats-number" id="totalWickets">-</h4>
+                    <p class="stats-label">Wickets</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon">
+                        <i class="fas fa-clock text-secondary"></i>
+                    </div>
+                    <h4 class="stats-number" id="economyRate">-</h4>
+                    <p class="stats-label">Economy</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Stats Tabs -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card modern-card">
+                <div class="card-header bg-transparent">
+                    <ul class="nav nav-tabs card-header-tabs" id="statsTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="batting-tab" data-bs-toggle="tab" data-bs-target="#batting" type="button" role="tab">
+                                <i class="fas fa-baseball-bat me-2"></i>Batting
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="bowling-tab" data-bs-toggle="tab" data-bs-target="#bowling" type="button" role="tab">
+                                <i class="fas fa-bowling-ball me-2"></i>Bowling
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="phases-tab" data-bs-toggle="tab" data-bs-target="#phases" type="button" role="tab">
+                                <i class="fas fa-clock me-2"></i>Phase Analysis
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="rivalry-tab" data-bs-toggle="tab" data-bs-target="#rivalry" type="button" role="tab">
+                                <i class="fas fa-fist-raised me-2"></i>Rivalry
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content" id="statsTabContent">
+                        <!-- Batting Tab -->
+                        <div class="tab-pane fade show active" id="batting" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-primary mb-3">Career Statistics</h6>
+                                    <table class="table table-borderless">
+                                        <tbody id="battingStatsTable">
+                                            <!-- Batting stats will be populated here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-primary mb-3">Milestones</h6>
+                                    <div class="row">
+                                        <div class="col-4 text-center">
+                                            <div class="milestone-card">
+                                                <h4 class="text-success" id="fifties">-</h4>
+                                                <p class="text-muted mb-0">50s</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-4 text-center">
+                                            <div class="milestone-card">
+                                                <h4 class="text-warning" id="hundreds">-</h4>
+                                                <p class="text-muted mb-0">100s</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-4 text-center">
+                                            <div class="milestone-card">
+                                                <h4 class="text-danger" id="doubleHundreds">-</h4>
+                                                <p class="text-muted mb-0">200s</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Bowling Tab -->
+                        <div class="tab-pane fade" id="bowling" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-primary mb-3">Bowling Statistics</h6>
+                                    <table class="table table-borderless">
+                                        <tbody id="bowlingStatsTable">
+                                            <!-- Bowling stats will be populated here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-primary mb-3">Bowling Milestones</h6>
+                                    <div class="row">
+                                        <div class="col-6 text-center">
+                                            <div class="milestone-card">
+                                                <h4 class="text-success" id="threeWickets">-</h4>
+                                                <p class="text-muted mb-0">3+ Wickets</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-6 text-center">
+                                            <div class="milestone-card">
+                                                <h4 class="text-warning" id="fiveWickets">-</h4>
+                                                <p class="text-muted mb-0">5+ Wickets</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Phase Analysis Tab -->
+                        <div class="tab-pane fade" id="phases" role="tabpanel">
+                            <div class="row">
+                                <div class="col-12">
+                                    <h6 class="text-primary mb-3">Phase-wise Performance Analysis</h6>
+                                    
+                                    <!-- T20 Phases -->
+                                    <div class="phase-analysis" id="t20PhaseAnalysis" style="display: none;">
+                                        <h6 class="text-success mb-3">T20 Format - Overs Breakdown</h6>
+                                        <div class="row">
+                                            <div class="col-md-3 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-primary mb-0">Powerplay (1-6)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Scored:</span>
+                                                            <span class="stat-value" id="t20Phase1Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="t20Phase1SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets Taken:</span>
+                                                            <span class="stat-value" id="t20Phase1Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="t20Phase1Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Conceded:</span>
+                                                            <span class="stat-value" id="t20Phase1Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-warning mb-0">Middle (7-12)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Scored:</span>
+                                                            <span class="stat-value" id="t20Phase2Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="t20Phase2SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets Taken:</span>
+                                                            <span class="stat-value" id="t20Phase2Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="t20Phase2Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Conceded:</span>
+                                                            <span class="stat-value" id="t20Phase2Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-info mb-0">Late Middle (13-16)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Scored:</span>
+                                                            <span class="stat-value" id="t20Phase3Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="t20Phase3SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets Taken:</span>
+                                                            <span class="stat-value" id="t20Phase3Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="t20Phase3Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Conceded:</span>
+                                                            <span class="stat-value" id="t20Phase3Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-danger mb-0">Death (17-20)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Scored:</span>
+                                                            <span class="stat-value" id="t20Phase4Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="t20Phase4SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets Taken:</span>
+                                                            <span class="stat-value" id="t20Phase4Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="t20Phase4Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs Conceded:</span>
+                                                            <span class="stat-value" id="t20Phase4Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- ODI Phases -->
+                                    <div class="phase-analysis" id="odiPhaseAnalysis" style="display: none;">
+                                        <h6 class="text-success mb-3">ODI Format - Overs Breakdown</h6>
+                                        <div class="row">
+                                            <div class="col-md-2 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-primary mb-0">PP1 (1-10)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs:</span>
+                                                            <span class="stat-value" id="odiPhase1Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="odiPhase1SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets:</span>
+                                                            <span class="stat-value" id="odiPhase1Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="odiPhase1Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Conceded:</span>
+                                                            <span class="stat-value" id="odiPhase1Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-warning mb-0">Middle1 (11-20)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs:</span>
+                                                            <span class="stat-value" id="odiPhase2Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="odiPhase2SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets:</span>
+                                                            <span class="stat-value" id="odiPhase2Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="odiPhase2Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Conceded:</span>
+                                                            <span class="stat-value" id="odiPhase2Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-info mb-0">Middle2 (21-30)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs:</span>
+                                                            <span class="stat-value" id="odiPhase3Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="odiPhase3SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets:</span>
+                                                            <span class="stat-value" id="odiPhase3Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="odiPhase3Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Conceded:</span>
+                                                            <span class="stat-value" id="odiPhase3Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-secondary mb-0">Middle3 (31-40)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs:</span>
+                                                            <span class="stat-value" id="odiPhase4Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="odiPhase4SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets:</span>
+                                                            <span class="stat-value" id="odiPhase4Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="odiPhase4Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Conceded:</span>
+                                                            <span class="stat-value" id="odiPhase4Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2 mb-3">
+                                                <div class="phase-card">
+                                                    <div class="phase-header">
+                                                        <h6 class="text-danger mb-0">Death (41-50)</h6>
+                                                    </div>
+                                                    <div class="phase-stats">
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Runs:</span>
+                                                            <span class="stat-value" id="odiPhase5Runs">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Strike Rate:</span>
+                                                            <span class="stat-value" id="odiPhase5SR">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Wickets:</span>
+                                                            <span class="stat-value" id="odiPhase5Wickets">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Dismissals:</span>
+                                                            <span class="stat-value" id="odiPhase5Dismissals">-</span>
+                                                        </div>
+                                                        <div class="stat-item">
+                                                            <span class="stat-label">Conceded:</span>
+                                                            <span class="stat-value" id="odiPhase5Conceded">-</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Rivalry Tab -->
+                        <div class="tab-pane fade" id="rivalry" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <h6 class="text-primary mb-3">Batting Dominance - Top 5 Opponents</h6>
+                                    <div class="row">
+                                        <div class="col-12 mb-3">
+                                            <div class="rivalry-section">
+                                                <h6 class="text-success mb-2">Most Runs Scored Against</h6>
+                                                <div id="mostRunsAgainst" class="rivalry-list">
+                                                    <!-- Top 5 opponents with most runs scored against them -->
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="rivalry-section">
+                                                <h6 class="text-warning mb-2">Most Wickets Taken Against</h6>
+                                                <div id="mostWicketsAgainst" class="rivalry-list">
+                                                    <!-- Top 5 opponents with most wickets taken against them -->
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <h6 class="text-primary mb-3">Struggling Against - Top 5 Opponents</h6>
+                                    <div class="row">
+                                        <div class="col-12 mb-3">
+                                            <div class="rivalry-section">
+                                                <h6 class="text-danger mb-2">Most Runs Conceded To</h6>
+                                                <div id="mostRunsConcededTo" class="rivalry-list">
+                                                    <!-- Top 5 opponents who scored most runs against player -->
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="rivalry-section">
+                                                <h6 class="text-info mb-2">Most Dismissals By</h6>
+                                                <div id="mostDismissalsBy" class="rivalry-list">
+                                                    <!-- Top 5 opponents who dismissed player most -->
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Player Comparison Modal -->
+<div class="modal fade" id="comparePlayersModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-balance-scale me-2"></i>Player Comparison
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label for="comparePlayer1" class="form-label">Player 1</label>
+                        <select class="form-select" id="comparePlayer1">
+                            <option value="">Select Player 1...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="comparePlayer2" class="form-label">Player 2</label>
+                        <select class="form-select" id="comparePlayer2">
+                            <option value="">Select Player 2...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-primary w-100" id="startComparisonBtn">
+                            <i class="fas fa-chart-bar me-2"></i>Compare
+                        </button>
+                    </div>
+                </div>
+                <div id="comparisonResults">
+                    <!-- Comparison results will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/players.js') }}"></script>
+{% endblock %}
