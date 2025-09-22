@@ -11,7 +11,6 @@ from data_processor import CricketDataProcessor
 from player_stats import PlayerStatsCalculator
 from venue_analyzer import VenueAnalyzer
 from team_analyzer import TeamAnalyzer
-from win_predictor import WinPredictor
 from supabase_client import get_supabase_status, supabase_client
 
 load_dotenv()
@@ -29,16 +28,16 @@ try:
     max_files_env = os.getenv('SUPABASE_MAX_FILES')
     try:
         # Default to 5 files if not explicitly configured
-        max_files_val = int(float(max_files_env)) if max_files_env else 5
+        max_files_val = int(float(max_files_env)) if max_files_env else 100
     except Exception:
-        max_files_val = 5
+        max_files_val = 100
     data_processor.start_background_supabase_load(max_workers=16, max_files=max_files_val)
 except Exception:
     logger.exception("Failed to start background load")
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
-win_predictor = WinPredictor(data_processor)
+## Removed win predictor per request; focusing on teams, venues, and players only
 
 # Supabase environment (loaded but not required for local JSON processing)
 SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -72,10 +71,7 @@ def teams():
     """Teams page"""
     return render_template('teams.html')
 
-@app.route('/predictions')
-def predictions():
-    """Win predictions page"""
-    return render_template('predictions_new.html')
+## Removed predictions page route
 
 @app.route('/api/supabase/status')
 def supabase_status():
@@ -439,89 +435,15 @@ def compare_teams():
         logger.error(f"Error comparing teams: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/predict-win', methods=['POST'])
-def predict_win():
-    """Predict match outcome"""
-    try:
-        data = request.get_json()
-        team1 = data.get('team1')
-        team2 = data.get('team2')
-        venue = data.get('venue')
-        format_type = data.get('format')
-        toss_winner = data.get('toss_winner')
-        toss_decision = data.get('toss_decision')
-        team1_players = data.get('team1_players') or []
-        team2_players = data.get('team2_players') or []
-        
-        prediction = win_predictor.predict_match_outcome({
-            'team1': team1,
-            'team2': team2,
-            'venue': venue,
-            'format': format_type,
-            'toss_winner': toss_winner,
-            'toss_decision': toss_decision,
-            'team1_players': team1_players,
-            'team2_players': team2_players
-        })
-        
-        return jsonify(prediction)
-    except Exception as e:
-        logger.error(f"Error predicting win: {e}")
-        return jsonify({'error': str(e)}), 500
+## Removed prediction API
 
-@app.route('/api/predictor/retrain', methods=['POST'])
-def retrain_predictor():
-    """Trigger (re)training of the win predictor model after data loads."""
-    try:
-        # Optionally accept a flag to also retrain phase models only
-        only_phase = (request.get_json(silent=True) or {}).get('only_phase')
-        if only_phase:
-            # Retrain only phase models
-            try:
-                win_predictor._train_phase_models()
-            except Exception:
-                logger.exception("Phase models retraining failed")
-        else:
-            win_predictor.retrain()
-        return jsonify({
-            'status': 'ok',
-            'model_trained': bool(win_predictor.is_trained),
-            'has_phase_models': bool(win_predictor.phase_runs_model and win_predictor.phase_wkts_model)
-        })
-    except Exception as e:
-        logger.error(f"Error retraining predictor: {e}")
-        return jsonify({'error': str(e)}), 500
+## Removed predictor retrain/status/save/load APIs
 
-@app.route('/api/predictor/save', methods=['POST'])
-def save_predictor():
-    """Save current models to disk (models/)."""
-    try:
-        meta = win_predictor.save_models()
-        return jsonify({'status': 'ok', 'meta': meta})
-    except Exception as e:
-        logger.error(f"Error saving models: {e}")
-        return jsonify({'error': str(e)}), 500
+ 
 
-@app.route('/api/predictor/load', methods=['POST'])
-def load_predictor():
-    """Load models from disk if present."""
-    try:
-        loaded = win_predictor.load_models()
-        return jsonify({'status': 'ok', 'loaded': bool(loaded), 'model_trained': bool(win_predictor.is_trained)})
-    except Exception as e:
-        logger.error(f"Error loading models: {e}")
-        return jsonify({'error': str(e)}), 500
+ 
 
-@app.route('/api/predictor/status')
-def predictor_status():
-    try:
-        return jsonify({
-            'model_trained': bool(win_predictor.is_trained),
-            'has_phase_models': bool(win_predictor.phase_runs_model and win_predictor.phase_wkts_model)
-        })
-    except Exception as e:
-        logger.error(f"Error getting predictor status: {e}")
-        return jsonify({'error': str(e)}), 500
+ 
 
 @app.route('/api/all-players')
 def get_all_players():
@@ -667,113 +589,11 @@ def get_match_categories():
         logger.error(f"Error getting match categories: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/predict-match', methods=['POST'])
-def predict_match():
-    """Predict match outcome based on team composition"""
-    try:
-        data = request.get_json()
-        
-        # Extract team data
-        team1_data = data.get('team1', {})
-        team2_data = data.get('team2', {})
-        venue = data.get('venue', '')
-        format_type = data.get('format', '')
-        toss_winner = data.get('toss_winner', '')
-        toss_decision = data.get('toss_decision', '')
-        
-        # Use win predictor to make prediction
-        win_predictor = data_processor.win_predictor
-        
-        # Create a simplified prediction based on basic team strength
-        # This is a basic implementation - you could enhance it with more complex analysis
-        team1_strength = calculate_team_strength(team1_data.get('players', []))
-        team2_strength = calculate_team_strength(team2_data.get('players', []))
-        
-        # Simple probability calculation
-        total_strength = team1_strength + team2_strength
-        team1_probability = (team1_strength / total_strength) * 100 if total_strength > 0 else 50
-        team2_probability = 100 - team1_probability
-        
-        # Add venue and format factors (simplified)
-        if venue and format_type:
-            venue_factor = get_venue_factor(venue, format_type)
-            team1_probability = max(10, min(90, team1_probability + venue_factor))
-            team2_probability = 100 - team1_probability
-        
-        result = {
-            'team1_probability': round(team1_probability, 1),
-            'team2_probability': round(team2_probability, 1),
-            'predicted_winner': team1_data.get('name') if team1_probability > team2_probability else team2_data.get('name'),
-            'confidence': max(team1_probability, team2_probability),
-            'factors': {
-                'team1_strength': team1_strength,
-                'team2_strength': team2_strength,
-                'venue': venue,
-                'format': format_type
-            }
-        }
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Error predicting match: {e}")
-        return jsonify({'error': str(e)}), 500
+ 
 
-def calculate_team_strength(players):
-    """Calculate basic team strength based on player statistics"""
-    try:
-        total_strength = 0
-        player_count = 0
-        
-        for player in players:
-            if not player:
-                continue
-                
-            try:
-                # Get player stats
-                player_stats = data_processor.player_stats_calculator.get_player_stats(player)
-                
-                # Calculate basic strength metrics
-                batting_strength = 0
-                bowling_strength = 0
-                
-                if player_stats.get('total_runs', 0) > 0:
-                    batting_avg = player_stats.get('batting_average', 0)
-                    strike_rate = player_stats.get('strike_rate', 0)
-                    batting_strength = (batting_avg * 0.6) + (strike_rate * 0.4)
-                
-                if player_stats.get('total_wickets', 0) > 0:
-                    bowling_avg = player_stats.get('bowling_average', 50)
-                    economy = player_stats.get('economy_rate', 10)
-                    bowling_strength = (50 - bowling_avg) + (10 - economy)
-                
-                player_strength = max(batting_strength, bowling_strength)
-                total_strength += player_strength
-                player_count += 1
-                
-            except Exception as e:
-                logger.warning(f"Error calculating strength for player {player}: {e}")
-                continue
-        
-        return total_strength / max(player_count, 1)
-        
-    except Exception as e:
-        logger.error(f"Error calculating team strength: {e}")
-        return 50  # Default neutral strength
+ 
 
-def get_venue_factor(venue, format_type):
-    """Get venue-specific factors for prediction"""
-    try:
-        # Simple venue factors - could be enhanced with historical data
-        venue_factors = {
-            'T20': 0,  # Neutral for T20
-            'ODI': 0,  # Neutral for ODI  
-            'Test': 0  # Neutral for Test
-        }
-        return venue_factors.get(format_type, 0)
-    except Exception as e:
-        logger.error(f"Error getting venue factor: {e}")
-        return 0
+ 
 
 if __name__ == '__main__':
     # Disable reloader to avoid double-loading the heavy dataset on startup
