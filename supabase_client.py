@@ -41,6 +41,12 @@ class SupabaseClient:
             # Also check for common alternative names
             if not url:
                 url = os.getenv("SUPABASE_PROJECT_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+            # Try derive from project id if provided (common on Vercel env)
+            if not url:
+                project_id = os.getenv("SUPABASE_PROJECT_ID") or os.getenv("NEXT_PUBLIC_SUPABASE_PROJECT_ID")
+                if project_id:
+                    url = f"https://{project_id.strip()}.supabase.co"
+                    os.environ['SUPABASE_URL'] = url
             if not key:
                 key = os.getenv("SUPABASE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
             # If URL is still missing but we have a JWT key, try to derive from 'ref' claim
@@ -68,10 +74,11 @@ class SupabaseClient:
             if url and key:
                 from supabase import create_client, Client
                 self.supabase: Client = create_client(url, key)
-                # Load storage-related env if present
-                self.bucket_name = os.getenv("SUPABASE_BUCKET") or None
-                # Normalize empty prefix to ''
-                self.bucket_prefix = os.getenv("SUPABASE_BUCKET_PREFIX") or ''
+                # Load storage-related env if present (default to ipl/data for this project)
+                self.bucket_name = os.getenv("SUPABASE_BUCKET") or 'ipl'
+                # Normalize empty prefix; default to 'data' folder
+                raw_prefix = os.getenv("SUPABASE_BUCKET_PREFIX")
+                self.bucket_prefix = (raw_prefix if raw_prefix is not None else 'data')
                 logger.info(
                     "Supabase env detected: url=%s, bucket=%s, prefix='%s', using_service_role=%s",
                     'set' if bool(url) else 'unset',
