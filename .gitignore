@@ -33,10 +33,14 @@ node_modules/
 *.parquet
 *.csv
 *.xlsx
+data/
 
 # Build
 build/
 dist/
+
+# Models
+models/
 
 # Test
 .pytest_cache/

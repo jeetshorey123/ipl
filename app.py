@@ -469,6 +469,60 @@ def predict_win():
         logger.error(f"Error predicting win: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/predictor/retrain', methods=['POST'])
+def retrain_predictor():
+    """Trigger (re)training of the win predictor model after data loads."""
+    try:
+        # Optionally accept a flag to also retrain phase models only
+        only_phase = (request.get_json(silent=True) or {}).get('only_phase')
+        if only_phase:
+            # Retrain only phase models
+            try:
+                win_predictor._train_phase_models()
+            except Exception:
+                logger.exception("Phase models retraining failed")
+        else:
+            win_predictor.retrain()
+        return jsonify({
+            'status': 'ok',
+            'model_trained': bool(win_predictor.is_trained),
+            'has_phase_models': bool(win_predictor.phase_runs_model and win_predictor.phase_wkts_model)
+        })
+    except Exception as e:
+        logger.error(f"Error retraining predictor: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predictor/save', methods=['POST'])
+def save_predictor():
+    """Save current models to disk (models/)."""
+    try:
+        meta = win_predictor.save_models()
+        return jsonify({'status': 'ok', 'meta': meta})
+    except Exception as e:
+        logger.error(f"Error saving models: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predictor/load', methods=['POST'])
+def load_predictor():
+    """Load models from disk if present."""
+    try:
+        loaded = win_predictor.load_models()
+        return jsonify({'status': 'ok', 'loaded': bool(loaded), 'model_trained': bool(win_predictor.is_trained)})
+    except Exception as e:
+        logger.error(f"Error loading models: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predictor/status')
+def predictor_status():
+    try:
+        return jsonify({
+            'model_trained': bool(win_predictor.is_trained),
+            'has_phase_models': bool(win_predictor.phase_runs_model and win_predictor.phase_wkts_model)
+        })
+    except Exception as e:
+        logger.error(f"Error getting predictor status: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/all-players')
 def get_all_players():
     """Get list of all players"""
