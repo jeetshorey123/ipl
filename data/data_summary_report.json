@@ -1,0 +1,47 @@
+{
+  "summary": {
+    "total_files": 24025,
+    "creation_date": "C:\\Users\\91983\\OneDrive\\Desktop\\ipl",
+    "description": "Combined IPL JSON data from multiple seasons for analysis"
+  },
+  "sources": {
+    "2024_json": 2421,
+    "2025_json": 1669,
+    "all_json": 19935
+  },
+  "file_breakdown": {
+    "2024_json": {
+      "count": 2421,
+      "prefix": "2024",
+      "sample_files": [
+        "2024_1375844.json",
+        "2024_1375845.json",
+        "2024_1375846.json",
+        "2024_1375847.json",
+        "2024_1375848.json"
+      ]
+    },
+    "2025_json": {
+      "count": 1669,
+      "prefix": "2025",
+      "sample_files": [
+        "2025_1392691.json",
+        "2025_1421074.json",
+        "2025_1426559.json",
+        "2025_1426623.json",
+        "2025_1426624.json"
+      ]
+    },
+    "all_json": {
+      "count": 19935,
+      "prefix": "all",
+      "sample_files": [
+        "all_1000851.json",
+        "all_1000853.json",
+        "all_1000855.json",
+        "all_1000881.json",
+        "all_1000883.json"
+      ]
+    }
+  }
+}
