@@ -21,35 +21,46 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize data processor and start fast background local load (concurrent)
+"""Initialize data processor and start background load.
+By default, prefer GitHub data (zip download) if GITHUB_LOAD=true; otherwise fall back to local data/ folder.
+"""
 data_processor = CricketDataProcessor('data/')
 try:
-    local_limit_raw = (os.getenv('LOCAL_MAX_FILES') or '').strip().lower()
-    local_limit = None
-    if local_limit_raw:
-        if local_limit_raw not in {'all', 'none', 'unlimited', 'null', 'inf', 'infinite'}:
-            try:
-                n = int(float(local_limit_raw))
-                local_limit = None if n <= 0 else n
-            except Exception:
-                local_limit = None
-    local_workers_raw = (os.getenv('LOCAL_MAX_WORKERS') or '').strip()
-    try:
-        local_workers = int(float(local_workers_raw)) if local_workers_raw else 24
-    except Exception:
-        local_workers = 24
-    # Optional include pattern (e.g., '**/*.json' or '2024_*.json')
-    include_pattern = (os.getenv('LOCAL_INCLUDE_PATTERN') or '').strip() or None
-    # Enforce default cap of 3613 unique matches loaded (deduplicated) unless overridden
+    # Common: cap and workers
     uniq_raw = (os.getenv('LOCAL_MAX_UNIQUE_MATCHES') or '').strip()
     try:
         default_max_unique = int(float(uniq_raw)) if uniq_raw else 3613
     except Exception:
         default_max_unique = 3613
-    # Start non-blocking background load from local data folder
-    data_processor.start_background_local_load(max_workers=local_workers, max_files=local_limit, include_pattern=include_pattern, max_unique_matches=default_max_unique)
+    workers_raw = (os.getenv('LOCAL_MAX_WORKERS') or '').strip()
+    try:
+        max_workers = int(float(workers_raw)) if workers_raw else 24
+    except Exception:
+        max_workers = 24
+    # GitHub load toggle and repo params
+    use_github = (os.getenv('GITHUB_LOAD') or '').strip().lower() in {'1', 'true', 'yes'}
+    repo_owner = (os.getenv('GITHUB_REPO_OWNER') or 'jeetshorey123').strip()
+    repo_name = (os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
+    repo_branch = (os.getenv('GITHUB_REPO_BRANCH') or 'main').strip()
+    repo_subdir = (os.getenv('GITHUB_REPO_SUBDIR') or 'data').strip()
+    if use_github:
+        logger.info(f"Starting background GitHub load: {repo_owner}/{repo_name}@{repo_branch} subdir={repo_subdir}")
+        data_processor.start_background_github_load(repo_owner=repo_owner, repo_name=repo_name, branch=repo_branch, subdir=repo_subdir, max_workers=max_workers, max_unique_matches=default_max_unique)
+    else:
+        # Local load settings
+        local_limit_raw = (os.getenv('LOCAL_MAX_FILES') or '').strip().lower()
+        local_limit = None
+        if local_limit_raw and local_limit_raw not in {'all', 'none', 'unlimited', 'null', 'inf', 'infinite'}:
+            try:
+                n = int(float(local_limit_raw))
+                local_limit = None if n <= 0 else n
+            except Exception:
+                local_limit = None
+        include_pattern = (os.getenv('LOCAL_INCLUDE_PATTERN') or '').strip() or None
+        logger.info("Starting background local JSON load from data/ folder")
+        data_processor.start_background_local_load(max_workers=max_workers, max_files=local_limit, include_pattern=include_pattern, max_unique_matches=default_max_unique)
 except Exception:
-    logger.exception("Failed to start background local JSON load")
+    logger.exception("Failed to start background data load")
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
@@ -92,6 +103,7 @@ def reload_data():
     """Force reload from local data directory (clears caches)."""
     try:
         payload = request.get_json(silent=True) or {}
+        mode = (payload.get('mode') or '').strip().lower()  # 'github' or 'local'
         max_files = payload.get('max_files')
         try:
             if isinstance(max_files, str):
@@ -119,7 +131,14 @@ def reload_data():
                 max_unique = int(float(uniq_env)) if uniq_env else 3613
             except Exception:
                 max_unique = 3613
-        res = data_processor.reload_from_local(max_files=max_files, max_workers=(max_workers or 24), include_pattern=include_pattern, max_unique_matches=max_unique)
+        if mode == 'github':
+            repo_owner = (payload.get('repo_owner') or os.getenv('GITHUB_REPO_OWNER') or 'jeetshorey123').strip()
+            repo_name = (payload.get('repo_name') or os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
+            repo_branch = (payload.get('repo_branch') or os.getenv('GITHUB_REPO_BRANCH') or 'main').strip()
+            repo_subdir = (payload.get('repo_subdir') or os.getenv('GITHUB_REPO_SUBDIR') or 'data').strip()
+            res = data_processor.reload_from_github(repo_owner=repo_owner, repo_name=repo_name, branch=repo_branch, subdir=repo_subdir, max_workers=(max_workers or 24), max_unique_matches=max_unique)
+        else:
+            res = data_processor.reload_from_local(max_files=max_files, max_workers=(max_workers or 24), include_pattern=include_pattern, max_unique_matches=max_unique)
         return jsonify(res)
     except Exception as e:
         logger.error(f"Error reloading data: {e}")

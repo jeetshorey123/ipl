@@ -8,6 +8,11 @@ from typing import Any, Dict, List, Optional
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import tempfile
+import zipfile
+import shutil
+from urllib.request import urlopen
+from io import BytesIO
 
 try:
     from supabase_client import supabase_client
@@ -70,7 +75,7 @@ class CricketDataProcessor:
         except Exception:
             return default
     
-    def load_all_matches(self, limit_matches: int | None = None, max_workers: int = 16, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None):
+    def load_all_matches(self, limit_matches: int | None = None, max_workers: int = 16, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None, base_directory: Optional[str] = None):
         """Load match data from local JSON files under data_directory.
         - If limit_matches is None or <= 0, load all files.
         - Uses a thread pool to parse JSON files concurrently for speed.
@@ -80,7 +85,8 @@ class CricketDataProcessor:
             pattern = include_pattern or "*.json"
             # Enable recursive search when pattern includes '**'
             recursive = True if ('**' in pattern) else False
-            json_files = glob.glob(os.path.join(self.data_directory, pattern), recursive=recursive)
+            root_dir = base_directory or self.data_directory
+            json_files = glob.glob(os.path.join(root_dir, pattern), recursive=recursive)
             # Normalize limit
             if isinstance(limit_matches, (int, float)):
                 try:
@@ -161,6 +167,119 @@ class CricketDataProcessor:
         finally:
             with self._lock:
                 self._loading = False
+
+    def _download_and_extract_github_data(self, repo_owner: str, repo_name: str, branch: str = 'main', subdir: str = 'data') -> Optional[str]:
+        """Download the repo ZIP from GitHub and extract only the specified subdir to a cache folder.
+        Returns the absolute path to the extracted subdir, or None on failure.
+        """
+        try:
+            zip_url = f"https://codeload.github.com/{repo_owner}/{repo_name}/zip/refs/heads/{branch}"
+            cache_root = os.path.abspath(os.path.join('.', '.cache', 'github', repo_name, branch))
+            target_dir = os.path.join(cache_root, subdir)
+            os.makedirs(cache_root, exist_ok=True)
+            # If target_dir already populated with jsons, reuse
+            if os.path.isdir(target_dir):
+                existing = glob.glob(os.path.join(target_dir, '**', '*.json'), recursive=True)
+                if existing:
+                    logger.info(f"Using cached GitHub data directory: {target_dir} ({len(existing)} json files found)")
+                    return target_dir
+            # Download ZIP into memory (streaming to memory)
+            logger.info(f"Downloading GitHub repo ZIP: {zip_url}")
+            with urlopen(zip_url, timeout=60) as resp:
+                data = resp.read()
+            # Extract only subdir entries
+            zf = zipfile.ZipFile(BytesIO(data))
+            # The zip has a top-level folder like '{repo_name}-{branch}/...'
+            top_prefix = None
+            # Find top-level directory name from first entry
+            if zf.namelist():
+                top_prefix = zf.namelist()[0].split('/')[0]
+            if not top_prefix:
+                top_prefix = f"{repo_name}-{branch}"
+            extract_prefix = f"{top_prefix}/{subdir}/"
+            # Clean target_dir if exists
+            if os.path.isdir(target_dir):
+                shutil.rmtree(target_dir, ignore_errors=True)
+            os.makedirs(target_dir, exist_ok=True)
+            count = 0
+            for member in zf.infolist():
+                if not member.filename.startswith(extract_prefix):
+                    continue
+                rel_path = member.filename[len(extract_prefix):]
+                if not rel_path:
+                    continue
+                # directories end with '/'
+                dest_path = os.path.join(target_dir, rel_path)
+                if member.is_dir() or member.filename.endswith('/'):
+                    os.makedirs(dest_path, exist_ok=True)
+                    continue
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                with zf.open(member) as src, open(dest_path, 'wb') as dst:
+                    shutil.copyfileobj(src, dst)
+                count += 1
+            logger.info(f"Extracted {count} files from GitHub ZIP into {target_dir}")
+            return target_dir
+        except Exception as e:
+            logger.error(f"Failed to download/extract GitHub repo data: {e}")
+            return None
+
+    def start_background_github_load(self, repo_owner: str = 'jeetshorey123', repo_name: str = 'ipl', branch: str = 'main', subdir: str = 'data', max_workers: int = 16, max_unique_matches: Optional[int] = None):
+        """Download data/ from GitHub repo ZIP and load JSONs in the background with concurrency and dedup cap."""
+        if self._loading:
+            logger.info("Background load already in progress")
+            return
+
+        def worker():
+            try:
+                with self._lock:
+                    self._loading = True
+                    self._files_loaded = 0
+                    self._matches_ingested = 0
+                    self._total_files = 0
+                    self._ingested_match_keys = set()
+                    self._stop_requested = False
+                base_dir = self._download_and_extract_github_data(repo_owner, repo_name, branch, subdir)
+                if not base_dir:
+                    logger.error("GitHub data download failed; aborting load")
+                    return
+                # Now list files to set totals then load
+                pattern = "**/*.json"
+                files = glob.glob(os.path.join(base_dir, pattern), recursive=True)
+                with self._lock:
+                    self._total_files = len(files)
+                self.load_all_matches(limit_matches=None, max_workers=max_workers, include_pattern=pattern, max_unique_matches=max_unique_matches, base_directory=base_dir)
+            except Exception as e:
+                logger.error(f"Background GitHub load failed: {e}")
+            finally:
+                with self._lock:
+                    self._loading = False
+
+        threading.Thread(target=worker, name="GitHubBackgroundLoader", daemon=True).start()
+
+    def reload_from_github(self, repo_owner: str = 'jeetshorey123', repo_name: str = 'ipl', branch: str = 'main', subdir: str = 'data', max_workers: int = 16, max_unique_matches: Optional[int] = None):
+        try:
+            with self._lock:
+                self.matches_data = []
+                self.players_cache = set()
+                self.teams_cache = set()
+                self.venues_cache = set()
+                self._files_loaded = 0
+                self._total_files = 0
+                self._matches_ingested = 0
+                self._ingested_match_keys = set()
+                self._stop_requested = False
+            self.start_background_github_load(repo_owner=repo_owner, repo_name=repo_name, branch=branch, subdir=subdir, max_workers=max_workers, max_unique_matches=max_unique_matches)
+            return {
+                'matches_loaded': len(self.matches_data),
+                'players_count': len(self.players_cache),
+                'teams_count': len(self.teams_cache),
+                'venues_count': len(self.venues_cache),
+                'loading': self._loading
+            }
+        except Exception as e:
+            logger.error(f"Failed to reload from GitHub: {e}")
+            return {'error': str(e)}
 
     def start_background_local_load(self, max_workers: int = 16, max_files: int | None = None, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None):
         """Start loading matches from local JSON files in the background with concurrency.
