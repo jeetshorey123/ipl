@@ -37,8 +37,8 @@
         </div>
         <div class="col-md-3 col-sm-6 mb-4">
             <div class="stat-card">
-                <h3>95%</h3>
-                <p>Prediction Accuracy</p>
+                <h3 id="statVenues">-</h3>
+                <p>Venues Tracked</p>
             </div>
         </div>
         <div class="col-md-3 col-sm-6 mb-4">
@@ -261,6 +261,10 @@ function loadQuickStats() {
             }
             if (typeof h.matches_loaded === 'number') {
                 document.getElementById('totalMatches').textContent = h.matches_loaded.toLocaleString();
+            }
+            if (typeof h.venues_count === 'number') {
+                const sv = document.getElementById('statVenues');
+                if (sv) sv.textContent = h.venues_count.toLocaleString();
             }
         })
         .catch(error => console.error('Error loading quick stats:', error));

@@ -394,6 +394,133 @@ def get_venue_stats():
         logger.error(f"Error getting venue stats: {e}")
         return jsonify({'error': str(e)}), 500
 
+# ----- Additional endpoints to support Venues UI -----
+
+@app.route('/api/all-venues')
+def api_all_venues():
+    try:
+        venues = sorted(venue_analyzer.get_all_venues())
+        return jsonify({'venues': venues, 'total': len(venues)})
+    except Exception as e:
+        logger.error(f"Error getting all venues: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/all-countries')
+def api_all_countries():
+    try:
+        countries = sorted(data_processor.get_all_countries())
+        return jsonify({'countries': countries, 'total': len(countries)})
+    except Exception as e:
+        logger.error(f"Error getting all countries: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/venue-overview')
+def api_venue_overview():
+    try:
+        # Parse optional filters
+        filters = {}
+        v = request.args.get('venue')
+        if v:
+            filters['venue'] = v
+        fmt = request.args.get('format')
+        if fmt:
+            filters['format'] = fmt
+        country = request.args.get('country')
+        if country:
+            filters['country'] = country
+        years_raw = request.args.get('years')
+        if years_raw:
+            try:
+                if years_raw.strip().startswith('['):
+                    filters['years'] = json.loads(years_raw)
+                else:
+                    filters['years'] = [y.strip() for y in years_raw.split(',') if y.strip()]
+            except Exception:
+                pass
+
+        matches = data_processor.filter_matches(filters)
+        agg = {}
+        for match in matches:
+            try:
+                info = match.get('info', {})
+                venue = info.get('venue') or 'Unknown'
+                city = info.get('city') or ''
+                rec = agg.get(venue)
+                if not rec:
+                    rec = {
+                        'venue': venue,
+                        'country': city,
+                        'total_matches': 0,
+                        'runs_total': 0,
+                        'innings_count': 0,
+                        'bat_first_wins_cnt': 0,
+                        'decided_cnt': 0,
+                    }
+                    agg[venue] = rec
+                rec['total_matches'] += 1
+                innings = match.get('innings', []) or []
+                for inning in innings:
+                    try:
+                        sc = data_processor._calculate_team_score(inning)
+                        rec['runs_total'] += sc.get('runs', 0)
+                        rec['innings_count'] += 1
+                    except Exception:
+                        continue
+                if len(innings) >= 1:
+                    first_team = innings[0].get('team')
+                    winner = (info.get('outcome') or {}).get('winner')
+                    if first_team and winner:
+                        rec['decided_cnt'] += 1
+                        if winner == first_team:
+                            rec['bat_first_wins_cnt'] += 1
+            except Exception:
+                continue
+
+        venues = []
+        for rec in agg.values():
+            innings_count = rec['innings_count'] if rec['innings_count'] else 0
+            avg_score = round((rec['runs_total'] / max(innings_count, 1)), 1)
+            decided = rec['decided_cnt'] if rec['decided_cnt'] else 0
+            bat_first_pct = round((rec['bat_first_wins_cnt'] / max(decided, 1)) * 100, 1) if decided else 0
+            venues.append({
+                'venue': rec['venue'],
+                'country': rec['country'],
+                'total_matches': rec['total_matches'],
+                'avg_score': avg_score,
+                'bat_first_wins': bat_first_pct,
+            })
+
+        venues.sort(key=lambda x: x['total_matches'], reverse=True)
+        return jsonify({'venues': venues, 'total_venues': len(venues), 'filters_applied': filters})
+    except Exception as e:
+        logger.error(f"Error building venue overview: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/venue-analysis/<venue_name>')
+def api_venue_analysis(venue_name):
+    try:
+        filters = {}
+        fmt = request.args.get('format')
+        if fmt:
+            filters['format'] = fmt
+        country = request.args.get('country')
+        if country:
+            filters['country'] = country
+        years_raw = request.args.get('years')
+        if years_raw:
+            try:
+                if years_raw.strip().startswith('['):
+                    filters['years'] = json.loads(years_raw)
+                else:
+                    filters['years'] = [y.strip() for y in years_raw.split(',') if y.strip()]
+            except Exception:
+                pass
+        stats = venue_analyzer.get_venue_stats(venue_name, filters)
+        return jsonify(stats)
+    except Exception as e:
+        logger.error(f"Error getting venue analysis for {venue_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/team-stats/<team_name>')
 def get_team_stats(team_name):
     """Get team statistics"""
