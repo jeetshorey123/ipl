@@ -29,3 +29,4 @@ Dockerfile
 Procfile
 DEPLOYMENT_GUIDE.md
 README.md
+.env

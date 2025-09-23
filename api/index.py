@@ -428,10 +428,6 @@ def api_venue_analysis(venue_name):
         logger.error(f"Error getting venue analysis for {venue_name}: {e}")
         return jsonify({'error': str(e)}), 500
 
-# Vercel handler
-def handler(request):
-    return app(request.environ, lambda status, headers: None)
-
 if __name__ == '__main__':
     # For local development
     app.run(debug=True, host='0.0.0.0', port=5000)
