@@ -105,7 +105,8 @@ p {
 }
 
 .navbar-dark {
-    background: rgba(15, 23, 42, 0.95) !important;
+    /* Force solid dark background in deploy to avoid translucency differences */
+    background: #0f172a !important; /* Deep Navy */
     border-bottom: 1px solid var(--border-dark);
 }
 

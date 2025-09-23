@@ -148,13 +148,23 @@ def api_retry_missing():
 # API endpoints
 @app.route('/api/player-stats/<player_name>')
 def get_player_stats(player_name):
-    """Get comprehensive statistics for a specific player"""
+    """Get comprehensive statistics for a specific player (frontend-compatible)."""
     try:
-        year = request.args.get('year', type=int)
-        innings_type = request.args.get('innings_type', 'overall')  # batting_first, bowling_first, or overall
-        venue = request.args.get('venue')
-        
-        stats = player_stats.get_player_stats(player_name, year=year, innings_type=innings_type, venue=venue)
+        # Build filters to match players.js query params
+        filters = {
+            'match_category': request.args.get('match_category'),  # 'ipl' | 'international'
+            'format': request.args.get('format'),                  # 'Test' | 'ODI' | 'T20'
+            'phase': request.args.get('phase'),                    # e.g., 't20_1_6'
+            'phase_role': request.args.get('phase_role'),          # 'batter' | 'bowler'
+            'venue': request.args.get('venue'),
+            'country': request.args.get('country'),
+            'innings_type': request.args.get('innings_type'),      # 'batting_first' | 'bowling_first' | 'overall'
+            'max_matches': request.args.get('max_matches'),
+        }
+        # Remove None values
+        filters = {k: v for k, v in filters.items() if v is not None}
+
+        stats = player_stats.get_player_stats(player_name, filters)
         return jsonify(stats)
     except Exception as e:
         logger.error(f"Error getting player stats for {player_name}: {str(e)}")
@@ -177,6 +187,27 @@ def compare_players():
         return jsonify(comparison)
     except Exception as e:
         logger.error(f"Error comparing players: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Alias endpoint used by players.js for multi-player comparison
+@app.route('/api/player-comparison')
+def api_player_comparison():
+    try:
+        players = request.args.getlist('players')
+        if not players or len(players) < 2:
+            return jsonify({'error': 'At least 2 players required for comparison'}), 400
+
+        filters = {
+            'venue': request.args.get('venue'),
+            'format': request.args.get('format'),
+            'country': request.args.get('country'),
+        }
+        filters = {k: v for k, v in filters.items() if v is not None}
+
+        comparison = player_stats.compare_players(players, filters)
+        return jsonify(comparison)
+    except Exception as e:
+        logger.error(f"Error in player comparison: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/players')
