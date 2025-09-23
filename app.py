@@ -22,42 +22,19 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize data processor and choose data source (Supabase vs Local JSON)
+# Initialize data processor (Supabase-only); local JSON loading is disabled by design
 data_processor = CricketDataProcessor('data/')
-
-# Decide source based on env var USE_LOCAL_DATA=true|false
-use_local_data = str(os.getenv('USE_LOCAL_DATA', '')).strip().lower() in ('1', 'true', 'yes', 'on')
-if use_local_data:
+# Begin background loading of matches from Supabase for fast startup
+try:
+    max_files_env = os.getenv('SUPABASE_MAX_FILES')
     try:
-        # Optional limit via LOCAL_MAX_FILES (fallback to count of JSON files)
-        local_max_env = os.getenv('LOCAL_MAX_FILES') or os.getenv('SUPABASE_MAX_FILES')
-        limit_matches = None
-        try:
-            limit_matches = int(float(local_max_env)) if local_max_env else None
-        except Exception:
-            limit_matches = None
-        if limit_matches is None:
-            try:
-                from glob import glob
-                limit_matches = len(glob(os.path.join('data', '*.json')))
-            except Exception:
-                limit_matches = 200  # fallback
-        logger.info(f"Loading local JSON data (limit {limit_matches}) from ./data")
-        data_processor.load_all_matches(limit_matches=limit_matches)
+        # Default to 5 files if not explicitly configured
+        max_files_val = int(float(max_files_env)) if max_files_env else 5
     except Exception:
-        logger.exception("Failed to load local JSON data")
-else:
-    # Begin background loading of matches from Supabase for fast startup
-    try:
-        max_files_env = os.getenv('SUPABASE_MAX_FILES')
-        try:
-            # Default to 5 files if not explicitly configured
-            max_files_val = int(float(max_files_env)) if max_files_env else 5
-        except Exception:
-            max_files_val = 5
-        data_processor.start_background_supabase_load(max_workers=16, max_files=max_files_val)
-    except Exception:
-        logger.exception("Failed to start background load")
+        max_files_val = 5
+    data_processor.start_background_supabase_load(max_workers=16, max_files=max_files_val)
+except Exception:
+    logger.exception("Failed to start background load")
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
