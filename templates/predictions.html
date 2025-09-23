@@ -1,4 +1,12 @@
 {% extends "base.html" %}
+{% block title %}Predictions (Removed){% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="alert alert-info">Predictions feature has been removed to reduce deployment size.</div>
+    <a href="{{ url_for('home') }}" class="btn btn-primary mt-2">Back to Dashboard</a>
+    </div>
+{% endblock %}
+{% extends "base.html" %}
 
 {% block title %}Win Prediction - Cricket Analytics Hub{% endblock %}
 
