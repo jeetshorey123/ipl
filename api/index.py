@@ -5,6 +5,7 @@ import json
 from collections import defaultdict
 from datetime import datetime
 import logging
+import time
 
 # Import our data processing modules
 import sys
@@ -52,6 +53,17 @@ except Exception:
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
+
+@app.context_processor
+def inject_static_version():
+    """Inject a cache-busting version string for static assets.
+    Prefer Vercel commit SHA or env override; fallback to hourly timestamp.
+    """
+    ver = os.getenv('STATIC_VERSION') or os.getenv('VERCEL_GIT_COMMIT_SHA')
+    if not ver:
+        # change hourly to avoid excessive invalidation
+        ver = str(int(time.time() // 3600))
+    return dict(STATIC_VERSION=ver)
 
 @app.route('/')
 def home():
