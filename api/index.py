@@ -14,6 +14,8 @@ from data_processor import CricketDataProcessor
 from player_stats import PlayerStatsCalculator
 from venue_analyzer import VenueAnalyzer
 from team_analyzer import TeamAnalyzer
+# Optional: supabase status if needed
+from supabase_client import supabase_client
 # WinPredictor removed to reduce deployment size
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
@@ -23,12 +25,33 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize data processor (Development Mode - Limited to 200 matches for faster startup)
+# Initialize data processor (Supabase-only; local path unused)
 data_processor = CricketDataProcessor('../data/')
+# Start background Supabase load (env-configurable)
+try:
+    max_files_env = os.getenv('SUPABASE_MAX_FILES')
+    max_workers_env = os.getenv('SUPABASE_MAX_WORKERS')
+    try:
+        max_files_val = int(float(max_files_env)) if (max_files_env not in [None, '', 'none', 'null']) else None
+        if isinstance(max_files_val, int) and max_files_val <= 0:
+            max_files_val = None
+    except Exception:
+        max_files_val = None
+    try:
+        max_workers_val = int(float(max_workers_env)) if max_workers_env else 24
+        if max_workers_val < 4:
+            max_workers_val = 4
+        if max_workers_val > 64:
+            max_workers_val = 64
+    except Exception:
+        max_workers_val = 24
+    data_processor.start_background_supabase_load(max_workers=max_workers_val, max_files=max_files_val)
+except Exception:
+    logging.getLogger(__name__).exception("Failed to start background load in Vercel handler")
+
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
-# no win predictor
 
 @app.route('/')
 def home():
@@ -63,6 +86,52 @@ def teams():
 @app.route('/predictions')
 def predictions():
     return "Predictions feature disabled", 410
+
+# Health and data endpoints required by frontend
+@app.route('/api/data/health')
+def data_health():
+    try:
+        dp = data_processor
+        base = {
+            'matches_loaded': len(dp.matches_data),
+            'players_count': len(getattr(dp, 'players_cache', set())),
+            'teams_count': len(getattr(dp, 'teams_cache', set())),
+            'venues_count': len(getattr(dp, 'venues_cache', set())),
+            'supabase_connected': True if supabase_client and supabase_client.is_connected else False
+        }
+        status = dp.get_loading_status() if hasattr(dp, 'get_loading_status') else {}
+        if isinstance(status, dict):
+            base.update(status)
+        return jsonify(base)
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in data health: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/data/players')
+def api_data_players():
+    try:
+        players = list(data_processor.get_all_players())
+        return jsonify({'players': sorted(players), 'total_players': len(players)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/data/retry-missing', methods=['POST'])
+def api_retry_missing():
+    try:
+        payload = request.get_json(silent=True) or {}
+        max_workers = payload.get('max_workers')
+        try:
+            if isinstance(max_workers, str):
+                max_workers = int(float(max_workers.strip()))
+            elif not isinstance(max_workers, int):
+                max_workers = None
+        except Exception:
+            max_workers = None
+        res = data_processor.retry_missing_files(max_workers=max_workers or 6)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # API endpoints
 @app.route('/api/player-stats/<player_name>')
