@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 import logging
 from dotenv import load_dotenv
+import time
 
 # Import our data processing modules
 from data_processor import CricketDataProcessor
@@ -51,6 +52,14 @@ player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
 # No win predictor (removed)
+
+@app.context_processor
+def inject_static_version():
+    """Inject cache-busting version string for local development to match deploy."""
+    ver = os.getenv('STATIC_VERSION')
+    if not ver:
+        ver = str(int(time.time() // 3600))
+    return dict(STATIC_VERSION=ver)
 
 # Supabase environment (loaded but not required for local JSON processing)
 SUPABASE_URL = os.getenv('SUPABASE_URL')
