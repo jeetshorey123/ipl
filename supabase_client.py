@@ -7,7 +7,7 @@ import os
 import json
 import base64
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple, Set
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -173,7 +173,7 @@ class SupabaseClient:
             def crawl(start_prefix: str) -> List[str]:
                 to_visit = [start_prefix]
                 found: List[str] = []
-                visited: set[str] = set()
+                visited: Set[str] = set()
                 while to_visit:
                     raw_path = to_visit.pop(0)
                     # Normalize path: no leading slash, no trailing slash (except empty)
@@ -282,7 +282,7 @@ class SupabaseClient:
         def crawl(start_prefix: str) -> List[str]:
             to_visit = [start_prefix]
             found: List[str] = []
-            visited: set[str] = set()
+            visited: Set[str] = set()
             while to_visit:
                 raw_path = to_visit.pop(0)
                 path = (raw_path or '').strip('/')
@@ -329,7 +329,7 @@ class SupabaseClient:
         bucket = bucket or self.bucket_name
         if not bucket:
             return []
-        results: List[tuple[str, Dict[str, Any]]] = []
+        results: List[Tuple[str, Dict[str, Any]]] = []
         storage = self.supabase.storage.from_(bucket)
 
         def fetch(path: str):
