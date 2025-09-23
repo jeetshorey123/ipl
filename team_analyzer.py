@@ -1,4 +1,3 @@
-import numpy as np
 from collections import defaultdict, Counter
 import logging
 
@@ -128,7 +127,7 @@ class TeamAnalyzer:
         return {
             'matches': len(all_scores),
             'total_runs': sum(all_scores),
-            'average_score': round(np.mean(all_scores), 2),
+            'average_score': round(sum(all_scores)/len(all_scores), 2),
             'highest_score': max(all_scores),
             'lowest_score': min(all_scores),
             'scores_300_plus': len(high_scores),
@@ -151,7 +150,7 @@ class TeamAnalyzer:
         return {
             'matches': len(opponent_scores),
             'runs_conceded': sum(opponent_scores),
-            'average_runs_conceded': round(np.mean(opponent_scores), 2),
+            'average_runs_conceded': round(sum(opponent_scores)/len(opponent_scores), 2),
             'best_bowling_performance': min(opponent_scores),
             'worst_bowling_performance': max(opponent_scores),
             'restricted_under_200': len([s for s in opponent_scores if s < 200]),
@@ -211,12 +210,12 @@ class TeamAnalyzer:
             'win_margins': {
                 'by_runs': {
                     'count': len(win_margins_runs),
-                    'average': round(np.mean(win_margins_runs), 2) if win_margins_runs else 0,
+                    'average': round(sum(win_margins_runs)/len(win_margins_runs), 2) if win_margins_runs else 0,
                     'highest': max(win_margins_runs) if win_margins_runs else 0
                 },
                 'by_wickets': {
                     'count': len(win_margins_wickets),
-                    'average': round(np.mean(win_margins_wickets), 2) if win_margins_wickets else 0,
+                    'average': round(sum(win_margins_wickets)/len(win_margins_wickets), 2) if win_margins_wickets else 0,
                     'highest': max(win_margins_wickets) if win_margins_wickets else 0
                 }
             }

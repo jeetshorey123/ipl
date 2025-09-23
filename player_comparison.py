@@ -1,6 +1,5 @@
 import logging
 from collections import defaultdict, Counter
-import numpy as np
 
 logger = logging.getLogger(__name__)
 

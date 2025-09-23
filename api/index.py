@@ -3,7 +3,6 @@ from flask_cors import CORS
 import os
 import json
 from collections import defaultdict
-import numpy as np
 from datetime import datetime
 import logging
 
@@ -15,7 +14,7 @@ from data_processor import CricketDataProcessor
 from player_stats import PlayerStatsCalculator
 from venue_analyzer import VenueAnalyzer
 from team_analyzer import TeamAnalyzer
-from win_predictor import WinPredictor
+# WinPredictor removed to reduce deployment size
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 CORS(app)
@@ -29,7 +28,7 @@ data_processor = CricketDataProcessor('../data/')
 player_stats = PlayerStatsCalculator(data_processor)
 venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
-win_predictor = WinPredictor(data_processor)
+# no win predictor
 
 @app.route('/')
 def home():
@@ -63,8 +62,7 @@ def teams():
 
 @app.route('/predictions')
 def predictions():
-    """Match prediction page"""
-    return render_template('predictions.html')
+    return "Predictions feature disabled", 410
 
 # API endpoints
 @app.route('/api/player-stats/<player_name>')
@@ -162,25 +160,7 @@ def get_team_stats(team_name):
 
 @app.route('/api/predict-match', methods=['POST'])
 def predict_match():
-    """Predict match outcome based on selected players"""
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        team1_players = data.get('team1_players', [])
-        team2_players = data.get('team2_players', [])
-        venue = data.get('venue', '')
-        
-        if len(team1_players) != 11 or len(team2_players) != 11:
-            return jsonify({'error': 'Each team must have exactly 11 players'}), 400
-        
-        prediction = win_predictor.predict_match(team1_players, team2_players, venue)
-        return jsonify(prediction)
-    except Exception as e:
-        logger.error(f"Error predicting match: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'Prediction feature disabled for deployment size constraints'}), 410
 
 @app.route('/api/dashboard')
 def get_dashboard_data():

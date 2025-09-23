@@ -1,4 +1,3 @@
-import numpy as np
 from collections import defaultdict, Counter
 import logging
 
@@ -87,8 +86,8 @@ class VenueAnalyzer:
             'teams_played': len(all_teams),
             'cities': dict(cities),
             'date_range': date_range,
-            'avg_win_margin_runs': round(np.mean(wins_by_runs), 2) if wins_by_runs else 0,
-            'avg_win_margin_wickets': round(np.mean(wins_by_wickets), 2) if wins_by_wickets else 0
+            'avg_win_margin_runs': round(sum(wins_by_runs)/len(wins_by_runs), 2) if wins_by_runs else 0,
+            'avg_win_margin_wickets': round(sum(wins_by_wickets)/len(wins_by_wickets), 2) if wins_by_wickets else 0
         }
     
     def _calculate_venue_batting_stats(self, venue_matches):
@@ -143,10 +142,10 @@ class VenueAnalyzer:
         boundary_percentage = ((all_boundaries['fours'] + all_boundaries['sixes']) / total_balls * 100) if total_balls > 0 else 0
         
         return {
-            'average_score': round(np.mean(all_scores), 2) if all_scores else 0,
+            'average_score': round(sum(all_scores)/len(all_scores), 2) if all_scores else 0,
             'highest_score': max(all_scores) if all_scores else 0,
             'lowest_score': min(all_scores) if all_scores else 0,
-            'average_run_rate': round(np.mean(all_run_rates), 2) if all_run_rates else 0,
+            'average_run_rate': round(sum(all_run_rates)/len(all_run_rates), 2) if all_run_rates else 0,
             'high_scores_300_plus': len(high_scores),
             'low_scores_150_minus': len(low_scores),
             'total_boundaries': all_boundaries,
