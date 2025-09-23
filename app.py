@@ -166,6 +166,48 @@ def get_available_years():
         logger.error(f"Error getting available years: {e}")
         return jsonify({'error': str(e)}), 500
 
+# Supabase helper endpoints: list and fetch raw JSONs
+@app.route('/api/supabase/list')
+def supabase_list():
+    """List JSON file keys in Supabase Storage. Query: prefix (optional), limit (optional int)."""
+    try:
+        if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
+            return jsonify({'error': 'Supabase not connected'}), 503
+        prefix = request.args.get('prefix')
+        limit = request.args.get('limit')
+        max_paths = None
+        if limit:
+            try:
+                max_paths = int(float(limit))
+            except Exception:
+                max_paths = None
+        files = supabase_client.list_json_files(prefix=prefix, max_files=max_paths)
+        return jsonify({'files': files, 'count': len(files)})
+    except Exception as e:
+        logger.error(f"Error listing Supabase JSONs: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/supabase/json')
+def supabase_get_json():
+    """Fetch a specific JSON file from Supabase Storage by key. Query: key (required)."""
+    try:
+        if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
+            return jsonify({'error': 'Supabase not connected'}), 503
+        key = request.args.get('key')
+        if not key:
+            return jsonify({'error': 'Missing key parameter'}), 400
+        bucket = getattr(supabase_client, 'bucket_name', None)
+        if not bucket:
+            return jsonify({'error': 'Supabase bucket not configured'}), 500
+        storage = supabase_client.supabase.storage.from_(bucket)
+        data_bytes = storage.download(key)
+        text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
+        obj = json.loads(text)
+        return jsonify(obj)
+    except Exception as e:
+        logger.error(f"Error fetching Supabase JSON '{request.args.get('key', '')}': {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/data/players')
 def get_data_players():
     """Get all available players for dropdown lists"""
