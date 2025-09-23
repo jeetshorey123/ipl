@@ -1,6 +1,5 @@
 import json
 import os
-import glob
 from collections import defaultdict
 from datetime import datetime
 import logging
@@ -8,11 +7,6 @@ from typing import Any, Dict, List, Optional
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import tempfile
-import zipfile
-import shutil
-from urllib.request import urlopen
-from io import BytesIO
 
 try:
     from supabase_client import supabase_client
@@ -24,7 +18,8 @@ logger = logging.getLogger(__name__)
 class CricketDataProcessor:
     """Core data processor for cricket match data"""
     
-    def __init__(self, data_directory):
+    def __init__(self, data_directory: Optional[str] = None):
+        # Supabase-only mode; local data_directory is ignored
         self.data_directory = data_directory
         self.matches_data = []
         self.players_cache = set()
@@ -43,9 +38,9 @@ class CricketDataProcessor:
         self._ingested_match_keys = set()
         # Stop flag when max unique matches cap reached
         self._stop_requested = False
-        # Supabase may not be configured in local-only mode; that's fine.
+        # Supabase may not be configured; in Supabase-only mode we'll simply have no data until configured
         if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
-            logger.info("Supabase not configured/connected; running in local JSON mode if requested.")
+            logger.info("Supabase not configured/connected; no local/GitHub fallback in this build.")
         
         # Initialize calculators
         from player_stats import PlayerStatsCalculator
@@ -75,261 +70,9 @@ class CricketDataProcessor:
         except Exception:
             return default
     
-    def load_all_matches(self, limit_matches: int | None = None, max_workers: int = 16, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None, base_directory: Optional[str] = None):
-        """Load match data from local JSON files under data_directory.
-        - If limit_matches is None or <= 0, load all files.
-        - Uses a thread pool to parse JSON files concurrently for speed.
-        - Updates background-loading status fields so the dashboard can display progress.
-        """
-        try:
-            pattern = include_pattern or "*.json"
-            # Enable recursive search when pattern includes '**'
-            recursive = True if ('**' in pattern) else False
-            root_dir = base_directory or self.data_directory
-            json_files = glob.glob(os.path.join(root_dir, pattern), recursive=recursive)
-            # Normalize limit
-            if isinstance(limit_matches, (int, float)):
-                try:
-                    limit = int(limit_matches)
-                except Exception:
-                    limit = None
-            else:
-                limit = None
-            if limit is not None and limit > 0:
-                json_files = json_files[:limit]
+    # Local/GitHub loaders removed in Supabase-only build
 
-            # Set status and reset in-memory caches
-            with self._lock:
-                self._loading = True
-                self._total_files = len(json_files)
-                self._files_loaded = 0
-                self._matches_ingested = 0
-                self.matches_data = []
-                self.players_cache = set()
-                self.teams_cache = set()
-                self.venues_cache = set()
-                self._ingested_match_keys = set()
-                self._stop_requested = False
-
-            logger.info(
-                f"Loading local match data from '{self.data_directory}' with {max_workers} workers "
-                f"({self._total_files} files)..."
-            )
-
-            def read_and_ingest(file_path: str):
-                try:
-                    # Early exit if cap reached
-                    with self._lock:
-                        if self._stop_requested:
-                            return
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        raw = json.load(f)
-                    # Some files could contain nested structure; normalize via extractor
-                    match = self._extract_match_from_row(raw) if isinstance(raw, (dict, list, str)) else None
-                    match_data = match if match else raw if isinstance(raw, dict) else None
-                    if match_data:
-                        # Deduplicate by a stable match signature
-                        key = self._compute_match_key(match_data)
-                        ingest = False
-                        with self._lock:
-                            if key not in self._ingested_match_keys and (max_unique_matches is None or self._matches_ingested < max_unique_matches):
-                                self._ingested_match_keys.add(key)
-                                ingest = True
-                        if ingest:
-                            self._ingest_match(match_data)
-                            # Check if we reached the cap; if so, set stop flag
-                            with self._lock:
-                                if max_unique_matches is not None and self._matches_ingested >= max_unique_matches:
-                                    self._stop_requested = True
-                except Exception as e:
-                    logger.error(f"Error loading {file_path}: {e}")
-                finally:
-                    # Always count the file as processed regardless of ingest outcome
-                    with self._lock:
-                        self._files_loaded += 1
-
-            # Concurrency for IO-bound loading
-            workers = max(1, min(64, int(max_workers or 1)))
-            if workers == 1 or len(json_files) <= 1:
-                for fp in json_files:
-                    read_and_ingest(fp)
-            else:
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    futures = [executor.submit(read_and_ingest, fp) for fp in json_files]
-                    for _ in as_completed(futures):
-                        pass
-
-            logger.info(
-                f"Loaded {len(self.matches_data)} unique matches from local JSONs | "
-                f"players={len(self.players_cache)}, teams={len(self.teams_cache)}, venues={len(self.venues_cache)} | "
-                f"files_processed={self._files_loaded}/{self._total_files}"
-            )
-        finally:
-            with self._lock:
-                self._loading = False
-
-    def _download_and_extract_github_data(self, repo_owner: str, repo_name: str, branch: str = 'main', subdir: str = 'data') -> Optional[str]:
-        """Download the repo ZIP from GitHub and extract only the specified subdir to a cache folder.
-        Returns the absolute path to the extracted subdir, or None on failure.
-        """
-        try:
-            zip_url = f"https://codeload.github.com/{repo_owner}/{repo_name}/zip/refs/heads/{branch}"
-            cache_root = os.path.abspath(os.path.join('.', '.cache', 'github', repo_name, branch))
-            target_dir = os.path.join(cache_root, subdir)
-            os.makedirs(cache_root, exist_ok=True)
-            # If target_dir already populated with jsons, reuse
-            if os.path.isdir(target_dir):
-                existing = glob.glob(os.path.join(target_dir, '**', '*.json'), recursive=True)
-                if existing:
-                    logger.info(f"Using cached GitHub data directory: {target_dir} ({len(existing)} json files found)")
-                    return target_dir
-            # Download ZIP into memory (streaming to memory)
-            logger.info(f"Downloading GitHub repo ZIP: {zip_url}")
-            with urlopen(zip_url, timeout=60) as resp:
-                data = resp.read()
-            # Extract only subdir entries
-            zf = zipfile.ZipFile(BytesIO(data))
-            # The zip has a top-level folder like '{repo_name}-{branch}/...'
-            top_prefix = None
-            # Find top-level directory name from first entry
-            if zf.namelist():
-                top_prefix = zf.namelist()[0].split('/')[0]
-            if not top_prefix:
-                top_prefix = f"{repo_name}-{branch}"
-            extract_prefix = f"{top_prefix}/{subdir}/"
-            # Clean target_dir if exists
-            if os.path.isdir(target_dir):
-                shutil.rmtree(target_dir, ignore_errors=True)
-            os.makedirs(target_dir, exist_ok=True)
-            count = 0
-            for member in zf.infolist():
-                if not member.filename.startswith(extract_prefix):
-                    continue
-                rel_path = member.filename[len(extract_prefix):]
-                if not rel_path:
-                    continue
-                # directories end with '/'
-                dest_path = os.path.join(target_dir, rel_path)
-                if member.is_dir() or member.filename.endswith('/'):
-                    os.makedirs(dest_path, exist_ok=True)
-                    continue
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                with zf.open(member) as src, open(dest_path, 'wb') as dst:
-                    shutil.copyfileobj(src, dst)
-                count += 1
-            logger.info(f"Extracted {count} files from GitHub ZIP into {target_dir}")
-            return target_dir
-        except Exception as e:
-            logger.error(f"Failed to download/extract GitHub repo data: {e}")
-            return None
-
-    def start_background_github_load(self, repo_owner: str = 'jeetshorey123', repo_name: str = 'ipl', branch: str = 'main', subdir: str = 'data', max_workers: int = 16, max_unique_matches: Optional[int] = None):
-        """Download data/ from GitHub repo ZIP and load JSONs in the background with concurrency and dedup cap."""
-        if self._loading:
-            logger.info("Background load already in progress")
-            return
-
-        def worker():
-            try:
-                with self._lock:
-                    self._loading = True
-                    self._files_loaded = 0
-                    self._matches_ingested = 0
-                    self._total_files = 0
-                    self._ingested_match_keys = set()
-                    self._stop_requested = False
-                base_dir = self._download_and_extract_github_data(repo_owner, repo_name, branch, subdir)
-                if not base_dir:
-                    logger.error("GitHub data download failed; aborting load")
-                    return
-                # Now list files to set totals then load
-                pattern = "**/*.json"
-                files = glob.glob(os.path.join(base_dir, pattern), recursive=True)
-                with self._lock:
-                    self._total_files = len(files)
-                self.load_all_matches(limit_matches=None, max_workers=max_workers, include_pattern=pattern, max_unique_matches=max_unique_matches, base_directory=base_dir)
-            except Exception as e:
-                logger.error(f"Background GitHub load failed: {e}")
-            finally:
-                with self._lock:
-                    self._loading = False
-
-        threading.Thread(target=worker, name="GitHubBackgroundLoader", daemon=True).start()
-
-    def reload_from_github(self, repo_owner: str = 'jeetshorey123', repo_name: str = 'ipl', branch: str = 'main', subdir: str = 'data', max_workers: int = 16, max_unique_matches: Optional[int] = None):
-        try:
-            with self._lock:
-                self.matches_data = []
-                self.players_cache = set()
-                self.teams_cache = set()
-                self.venues_cache = set()
-                self._files_loaded = 0
-                self._total_files = 0
-                self._matches_ingested = 0
-                self._ingested_match_keys = set()
-                self._stop_requested = False
-            self.start_background_github_load(repo_owner=repo_owner, repo_name=repo_name, branch=branch, subdir=subdir, max_workers=max_workers, max_unique_matches=max_unique_matches)
-            return {
-                'matches_loaded': len(self.matches_data),
-                'players_count': len(self.players_cache),
-                'teams_count': len(self.teams_cache),
-                'venues_count': len(self.venues_cache),
-                'loading': self._loading
-            }
-        except Exception as e:
-            logger.error(f"Failed to reload from GitHub: {e}")
-            return {'error': str(e)}
-
-    def start_background_local_load(self, max_workers: int = 16, max_files: int | None = None, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None):
-        """Start loading matches from local JSON files in the background with concurrency.
-        This mirrors the Supabase background loader but reads from disk.
-        """
-        if self._loading:
-            logger.info("Background load already in progress")
-            return
-
-        def worker():
-            try:
-                self.load_all_matches(limit_matches=max_files, max_workers=max_workers, include_pattern=include_pattern, max_unique_matches=max_unique_matches)
-            except Exception as e:
-                logger.error(f"Background local load failed: {e}")
-            finally:
-                with self._lock:
-                    self._loading = False
-
-        # Mark loading and start thread
-        with self._lock:
-            self._loading = True
-            self._files_loaded = 0
-            self._matches_ingested = 0
-            # _total_files will be set inside load_all_matches after listing files
-        threading.Thread(target=worker, name="LocalBackgroundLoader", daemon=True).start()
-
-    def reload_from_local(self, max_files: int | None = None, max_workers: int = 16, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None):
-        """Clear caches and start background local load from data directory."""
-        try:
-            with self._lock:
-                self.matches_data = []
-                self.players_cache = set()
-                self.teams_cache = set()
-                self.venues_cache = set()
-                self._files_loaded = 0
-                self._total_files = 0
-            self._matches_ingested = 0
-            self._ingested_match_keys = set()
-            self._stop_requested = False
-            self.start_background_local_load(max_workers=max_workers, max_files=max_files, include_pattern=include_pattern, max_unique_matches=max_unique_matches)
-            return {
-                'matches_loaded': len(self.matches_data),
-                'players_count': len(self.players_cache),
-                'teams_count': len(self.teams_cache),
-                'venues_count': len(self.venues_cache),
-                'loading': self._loading
-            }
-        except Exception as e:
-            logger.error(f"Failed to reload from local: {e}")
-            return {'error': str(e)}
+    # GitHub and Local reload/load functions removed
 
     def _extract_match_from_row(self, row: Dict[str, Any]):
         """Try to extract a match JSON object from a Supabase row with unknown schema.

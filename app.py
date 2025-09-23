@@ -22,10 +22,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 """Initialize data processor and start background load.
-Priority order (explicit-only; no auto-detect):
-1) Supabase (if SUPABASE_LOAD=true)
-2) GitHub ZIP data (if GITHUB_LOAD=true)
-3) Local data/ folder (fallback)
+Supabase-only build: data loads from Supabase Storage when SUPABASE_LOAD=true.
+No GitHub/local fallback.
 """
 data_processor = CricketDataProcessor('data/')
 try:
@@ -40,13 +38,7 @@ try:
         max_workers = int(float(workers_raw)) if workers_raw else 24
     except Exception:
         max_workers = 24
-    # GitHub load toggle and repo params
-    use_github = (os.getenv('GITHUB_LOAD') or '').strip().lower() in {'1', 'true', 'yes'}
     use_supabase = (os.getenv('SUPABASE_LOAD') or '').strip().lower() in {'1', 'true', 'yes'}
-    repo_owner = (os.getenv('GITHUB_REPO_OWNER') or 'jeetshorey123').strip()
-    repo_name = (os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
-    repo_branch = (os.getenv('GITHUB_REPO_BRANCH') or 'main').strip()
-    repo_subdir = (os.getenv('GITHUB_REPO_SUBDIR') or 'data').strip()
     if use_supabase:
         # Optional limit for number of files from storage
         max_files_env = (os.getenv('SUPABASE_MAX_FILES') or '').strip()
@@ -67,22 +59,8 @@ try:
             sup_max_unique = 3612
         logger.info("Starting background Supabase load")
         data_processor.start_background_supabase_load(max_workers=sup_max_workers, max_files=max_files, max_unique_matches=sup_max_unique)
-    elif use_github:
-        logger.info(f"Starting background GitHub load: {repo_owner}/{repo_name}@{repo_branch} subdir={repo_subdir}")
-        data_processor.start_background_github_load(repo_owner=repo_owner, repo_name=repo_name, branch=repo_branch, subdir=repo_subdir, max_workers=max_workers, max_unique_matches=default_max_unique)
     else:
-        # Local load settings
-        local_limit_raw = (os.getenv('LOCAL_MAX_FILES') or '').strip().lower()
-        local_limit = None
-        if local_limit_raw and local_limit_raw not in {'all', 'none', 'unlimited', 'null', 'inf', 'infinite'}:
-            try:
-                n = int(float(local_limit_raw))
-                local_limit = None if n <= 0 else n
-            except Exception:
-                local_limit = None
-        include_pattern = (os.getenv('LOCAL_INCLUDE_PATTERN') or '').strip() or None
-        logger.info("Starting background local JSON load from data/ folder")
-        data_processor.start_background_local_load(max_workers=max_workers, max_files=local_limit, include_pattern=include_pattern, max_unique_matches=default_max_unique)
+        logger.warning("SUPABASE_LOAD is not true; no data source configured in Supabase-only build.")
 except Exception:
     logger.exception("Failed to start background data load")
 player_stats = PlayerStatsCalculator(data_processor)
@@ -124,10 +102,10 @@ def teams():
 
 @app.route('/api/data/reload', methods=['POST'])
 def reload_data():
-    """Force reload from local data directory (clears caches)."""
+    """Reload from Supabase (clears caches)."""
     try:
         payload = request.get_json(silent=True) or {}
-        mode = (payload.get('mode') or '').strip().lower()  # 'supabase'|'github'|'local'
+        mode = (payload.get('mode') or '').strip().lower()  # expect 'supabase' (others not supported)
         max_files = payload.get('max_files')
         try:
             if isinstance(max_files, str):
@@ -141,8 +119,7 @@ def reload_data():
                 max_workers = int(float(max_workers.strip()))
         except Exception:
             max_workers = None
-        include_pattern = payload.get('include_pattern') or None
-        # Optional override of unique match cap via request; default remains 3613
+        # Optional override of unique match cap via request
         max_unique = payload.get('max_unique_matches')
         try:
             if isinstance(max_unique, str):
@@ -150,20 +127,13 @@ def reload_data():
         except Exception:
             max_unique = None
         if max_unique is None:
-            # Use Supabase default 3612 when reloading supabase; otherwise local default 3613
-            if mode == 'supabase':
-                uniq_env = (os.getenv('SUPABASE_MAX_UNIQUE_MATCHES') or '').strip()
-                try:
-                    max_unique = int(float(uniq_env)) if uniq_env else 3612
-                except Exception:
-                    max_unique = 3612
-            else:
-                uniq_env = (os.getenv('LOCAL_MAX_UNIQUE_MATCHES') or '').strip()
-                try:
-                    max_unique = int(float(uniq_env)) if uniq_env else 3613
-                except Exception:
-                    max_unique = 3613
-        if mode == 'supabase':
+            # Use Supabase default 3612 when reloading supabase
+            uniq_env = (os.getenv('SUPABASE_MAX_UNIQUE_MATCHES') or '').strip()
+            try:
+                max_unique = int(float(uniq_env)) if uniq_env else 3612
+            except Exception:
+                max_unique = 3612
+        if mode in ('', 'supabase'):
             # If max_workers unspecified, use SUPABASE_MAX_WORKERS or fallback to 24
             if not max_workers:
                 sw_raw = (os.getenv('SUPABASE_MAX_WORKERS') or '').strip()
@@ -172,14 +142,8 @@ def reload_data():
                 except Exception:
                     max_workers = 24
             res = data_processor.reload_from_supabase(max_files=max_files, max_unique_matches=max_unique, max_workers=max_workers)
-        elif mode == 'github':
-            repo_owner = (payload.get('repo_owner') or os.getenv('GITHUB_REPO_OWNER') or 'jeetshorey123').strip()
-            repo_name = (payload.get('repo_name') or os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
-            repo_branch = (payload.get('repo_branch') or os.getenv('GITHUB_REPO_BRANCH') or 'main').strip()
-            repo_subdir = (payload.get('repo_subdir') or os.getenv('GITHUB_REPO_SUBDIR') or 'data').strip()
-            res = data_processor.reload_from_github(repo_owner=repo_owner, repo_name=repo_name, branch=repo_branch, subdir=repo_subdir, max_workers=(max_workers or 24), max_unique_matches=max_unique)
         else:
-            res = data_processor.reload_from_local(max_files=max_files, max_workers=(max_workers or 24), include_pattern=include_pattern, max_unique_matches=max_unique)
+            return jsonify({'error': 'Unsupported mode in Supabase-only build'}), 400
         return jsonify(res)
     except Exception as e:
         logger.error(f"Error reloading data: {e}")
