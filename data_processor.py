@@ -1,6 +1,8 @@
 import json
 import os
+import glob
 from collections import defaultdict
+import pandas as pd
 from datetime import datetime
 import logging
 from typing import Any, Dict, List, Optional
@@ -18,8 +20,7 @@ logger = logging.getLogger(__name__)
 class CricketDataProcessor:
     """Core data processor for cricket match data"""
     
-    def __init__(self, data_directory: Optional[str] = None):
-        # Supabase-only mode; local data_directory is ignored
+    def __init__(self, data_directory):
         self.data_directory = data_directory
         self.matches_data = []
         self.players_cache = set()
@@ -29,18 +30,11 @@ class CricketDataProcessor:
         # Background loading state
         self._loading = False
         self._total_files = 0
-        # Count of files processed (attempted reads), not the same as unique matches ingested
         self._files_loaded = 0
-        # Count of unique matches ingested
-        self._matches_ingested = 0
         self._ingested_keys = set()
-        # Track unique match signatures to avoid duplicates across repeated files
-        self._ingested_match_keys = set()
-        # Stop flag when max unique matches cap reached
-        self._stop_requested = False
-        # Supabase may not be configured; in Supabase-only mode we'll simply have no data until configured
+        # Supabase-only data source per requirements
         if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
-            logger.info("Supabase not configured/connected; no local/GitHub fallback in this build.")
+            logger.error("Supabase not configured or not connected. No local data fallback per requirements.")
         
         # Initialize calculators
         from player_stats import PlayerStatsCalculator
@@ -70,9 +64,47 @@ class CricketDataProcessor:
         except Exception:
             return default
     
-    # Local/GitHub loaders removed in Supabase-only build
-
-    # GitHub and Local reload/load functions removed
+    def load_all_matches(self, limit_matches=200):
+        """Load match data from JSON files with optional limit for development"""
+        logger.info(f"Loading match data (limit: {limit_matches} matches for development)...")
+        json_files = glob.glob(os.path.join(self.data_directory, "*.json"))
+        
+        loaded_count = 0
+        for file_path in json_files:
+            if loaded_count >= limit_matches:
+                break
+                
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    match_data = json.load(f)
+                    self.matches_data.append(match_data)
+                    loaded_count += 1
+                    
+                    # Cache unique values
+                    if 'info' in match_data:
+                        info = match_data['info']
+                        
+                        # Cache teams
+                        if 'teams' in info:
+                            self.teams_cache.update(info['teams'])
+                        
+                        # Cache venue
+                        if 'venue' in info:
+                            self.venues_cache.add(info['venue'])
+                        
+                        # Cache players
+                        if 'players' in info:
+                            for team, players in info['players'].items():
+                                self.players_cache.update(players)
+                                
+            except Exception as e:
+                logger.error(f"Error loading {file_path}: {e}")
+                continue
+        
+        logger.info(f"Loaded {len(self.matches_data)} matches (development mode - limited dataset)")
+        logger.info(f"Found {len(self.players_cache)} unique players")
+        logger.info(f"Found {len(self.teams_cache)} unique teams")
+        logger.info(f"Found {len(self.venues_cache)} unique venues")
 
     def _extract_match_from_row(self, row: Dict[str, Any]):
         """Try to extract a match JSON object from a Supabase row with unknown schema.
@@ -123,38 +155,11 @@ class CricketDataProcessor:
             if 'players' in info:
                 for team, players in info['players'].items():
                     self.players_cache.update(players)
-            self._matches_ingested += 1
+            self._files_loaded += 1
 
-    def _compute_match_key(self, match: Dict[str, Any]) -> str:
-        """Compute a stable signature for a match to deduplicate duplicates across files.
-        Prefer a compact signature from key info fields; fall back to a sorted JSON dump hash.
-        """
-        try:
-            info = match.get('info', {}) if isinstance(match, dict) else {}
-            event = (info.get('event') or {}).get('name') or ''
-            dates = info.get('dates') or []
-            date0 = dates[0] if dates else ''
-            teams = info.get('teams') or []
-            teams_sig = ' vs '.join(sorted(map(str, teams)))
-            venue = info.get('venue') or ''
-            mtype = info.get('match_type') or ''
-            city = info.get('city') or ''
-            season = (info.get('season') or '')
-            parts = [str(x) for x in [event, date0, teams_sig, venue, city, mtype, season] if x is not None]
-            sig = '|'.join(parts)
-            if sig.strip():
-                return sig
-        except Exception:
-            pass
-        # Fallback to canonical JSON string (sorted keys) to catch exact duplicates
-        try:
-            return json.dumps(match, sort_keys=True, separators=(',', ':'))[:512]
-        except Exception:
-            return str(id(match))
-
-    def start_background_supabase_load(self, max_workers: int = 16, max_files: int | None = None, max_unique_matches: int | None = None):
-        """Start loading matches from Supabase Storage in the background with concurrency,
-        with deduplication and optional unique match cap.
+    def start_background_supabase_load(self, max_workers: int = 16, max_files: int | None = None):
+        """Start loading ALL matches from Supabase in the background with concurrency.
+        This avoids blocking startup and loads quickly. No artificial limits.
         """
         if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
             logger.error("Supabase not connected; cannot start background load.")
@@ -163,14 +168,9 @@ class CricketDataProcessor:
             logger.info("Background load already in progress")
             return
 
-        # Initialize state
-        with self._lock:
-            self._loading = True
-            self._files_loaded = 0
-            self._matches_ingested = 0
-            self._ingested_keys = set()
-            self._ingested_match_keys = set()
-            self._stop_requested = False
+        self._loading = True
+        self._files_loaded = 0
+        self._ingested_keys = set()
 
         def worker():
             try:
@@ -180,8 +180,7 @@ class CricketDataProcessor:
                 keys = supabase_client.list_json_files(bucket=bucket, prefix=supabase_client.bucket_prefix or '')
                 if max_files is not None and isinstance(max_files, int) and max_files > 0:
                     keys = keys[:max_files]
-                with self._lock:
-                    self._total_files = len(keys)
+                self._total_files = len(keys)
                 if not keys:
                     # Fallback to table if no storage files
                     logger.info("No JSON files in storage; trying table fallback...")
@@ -192,17 +191,9 @@ class CricketDataProcessor:
                             self._ingest_match(match_data)
                     return
 
-                logger.info(
-                    f"Background loading {len(keys)} JSON files from Supabase Storage with {max_workers} workers... "
-                    f"(limit: {max_files if max_files else 'all'}, cap={max_unique_matches if max_unique_matches is not None else 'none'})"
-                )
-
+                logger.info(f"Background loading {len(keys)} JSON files from Supabase Storage with {max_workers} workers... (limit: {max_files if max_files else 'all'})")
+                # Download + parse concurrently
                 def download_parse(key: str):
-                    # Early exit if cap already reached
-                    with self._lock:
-                        if self._stop_requested:
-                            self._files_loaded += 1
-                            return
                     backoff = 0.2
                     attempts = 5
                     for attempt in range(attempts):
@@ -210,58 +201,45 @@ class CricketDataProcessor:
                             data_bytes = storage.download(key)
                             text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
                             obj = json.loads(text)
+                            # Accept either full match or nested structures
                             match_data = self._extract_match_from_row(obj)
                             if match_data:
-                                should_ingest = False
+                                self._ingest_match(match_data)
                                 with self._lock:
-                                    if max_unique_matches is None or self._matches_ingested < max_unique_matches:
-                                        mkey = self._compute_match_key(match_data)
-                                        if mkey not in self._ingested_match_keys:
-                                            self._ingested_match_keys.add(mkey)
-                                            should_ingest = True
-                                if should_ingest:
-                                    self._ingest_match(match_data)
-                                    with self._lock:
-                                        self._ingested_keys.add(key)
-                                        if max_unique_matches is not None and self._matches_ingested >= max_unique_matches:
-                                            self._stop_requested = True
-                            break
+                                    self._ingested_keys.add(key)
+                            return
                         except Exception as de:
                             if attempt < attempts - 1:
                                 time.sleep(backoff)
                                 backoff *= 2
                             else:
                                 logger.warning(f"Failed to download/parse '{key}' after {attempts} attempts: {de}")
-                    # Count this key as processed once per key
-                    with self._lock:
-                        self._files_loaded += 1
 
                 # Use a reasonable pool size
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = [executor.submit(download_parse, k) for k in keys]
                     for _ in as_completed(futures):
                         pass
-
-                # Second pass only if not capped and there are missing keys
+                # If any missing, try a second, smaller pass
+                missing = []
                 with self._lock:
-                    capped = max_unique_matches is not None and self._matches_ingested >= max_unique_matches
-                    missing = [k for k in keys if k not in self._ingested_keys] if (self._ingested_keys and self._total_files) else []
-                if missing and not capped:
+                    if self._ingested_keys and self._total_files:
+                        missing = [k for k in keys if k not in self._ingested_keys]
+                if missing:
                     logger.info(f"Second pass for {len(missing)} missing files...")
                     with ThreadPoolExecutor(max_workers=max(2, min(6, len(missing)))) as executor:
                         futures = [executor.submit(download_parse, k) for k in missing]
                         for _ in as_completed(futures):
                             pass
-                logger.info(f"Background load complete: {self._files_loaded}/{self._total_files} files processed; matches={len(self.matches_data)}")
+                logger.info(f"Background load complete: {self._files_loaded}/{self._total_files} files ingested")
             except Exception as e:
                 logger.error(f"Background load failed: {e}")
             finally:
-                with self._lock:
-                    self._loading = False
+                self._loading = False
 
         threading.Thread(target=worker, name="SupabaseBackgroundLoader", daemon=True).start()
 
-    def reload_from_supabase(self, max_files: int | None = None, max_unique_matches: int | None = None, max_workers: int = 16):
+    def reload_from_supabase(self, max_files: int | None = None):
         """Clear in-memory caches and re-start background load from Supabase.
         If max_files is provided, limit the storage load to first N JSON files."""
         try:
@@ -272,7 +250,7 @@ class CricketDataProcessor:
                 self.venues_cache = set()
                 self._files_loaded = 0
                 self._total_files = 0
-            self.start_background_supabase_load(max_workers=max_workers, max_files=max_files, max_unique_matches=max_unique_matches)
+            self.start_background_supabase_load(max_files=max_files)
             return {
                 'matches_loaded': len(self.matches_data),
                 'players_count': len(self.players_cache),

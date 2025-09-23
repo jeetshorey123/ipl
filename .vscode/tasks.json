@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Flask app",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$env:FLASK_APP='app.py'; $env:FLASK_ENV='development'; python app.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Run quick API smoke",
+			"type": "shell",
+			"command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \". .\\.venv\\Scripts\\Activate.ps1; $env:SUPABASE_URL='https://xnfzscwsvxzotqrdpnqf.supabase.co'; $env:SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY; $env:FLASK_ENV='production'; $env:PYTHONUNBUFFERED='1'; python - << 'PYCODE'\\nimport json, time, threading\\nfrom app import app, data_processor\\n\\n# start background loader already started by import\\nclient = app.test_client()\\n# wait a bit for some files\\nfor _ in range(10):\\n    h = client.get('/api/data/health').get_json()\\n    if (h or {}).get('matches_loaded', 0) > 0:\\n        break\\n    time.sleep(0.5)\\nprint('HEALTH:', client.get('/api/data/health').get_json())\\n# get players list\\nplist = client.get('/api/data/players').get_json() or {}\\nplayers = plist.get('players') or []\\nprint('PLAYERS COUNT:', len(players))\\nname = players[0] if players else 'Virat Kohli'\\nresp = client.get(f'/api/player-stats/{name}?max_matches=5')\\nprint('PLAYER STATUS:', resp.status_code)\\ntry:\\n    print(json.dumps(resp.get_json(), indent=2)[:1000])\\nexcept Exception as e:\\n    print('Error decoding JSON:', e)\\nPYCODE\"",
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

@@ -4,12 +4,6 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
 import logging
-import os
-from datetime import datetime
-try:
-    import joblib
-except Exception:  # joblib is in sklearn deps but guard anyway
-    joblib = None
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +19,7 @@ class WinPredictor:
         self.phase_runs_model = None
         self.phase_wkts_model = None
         self.phase_encoders = {}
-        # Try loading models from disk first, else train
-        loaded = False
-        try:
-            loaded = self.load_models()
-        except Exception:
-            loaded = False
-        if not loaded:
-            self._train_model()
+        self._train_model()
     
     def _train_model(self):
         """Train the win prediction model"""
@@ -42,8 +29,7 @@ class WinPredictor:
             # Prepare training data
             training_data = self._prepare_training_data()
             
-            # Train with very small datasets too; fall back gracefully if still too small
-            if len(training_data) < 3:
+            if len(training_data) < 10:
                 logger.warning("Insufficient data to train model")
                 return
             
@@ -74,65 +60,9 @@ class WinPredictor:
             logger.info(f"Model trained successfully with {len(training_data)} matches")
             # Train phasewise expected score and wickets models
             self._train_phase_models()
-            # Persist models if possible
-            try:
-                self.save_models()
-            except Exception:
-                logger.debug("Skipping save_models after training")
             
         except Exception as e:
             logger.error(f"Error training model: {e}")
-
-    def retrain(self):
-        """Public method to (re)train models after data changes."""
-        # Reset training flags and models
-        self.model = None
-        self.label_encoders = {}
-        self.is_trained = False
-        self.phase_runs_model = None
-        self.phase_wkts_model = None
-        self.phase_encoders = {}
-        self._train_model()
-
-    def save_models(self, model_dir: str = 'models'):
-        """Save classifier, encoders, and phase models to disk."""
-        if joblib is None:
-            raise RuntimeError("joblib not available for saving models")
-        os.makedirs(model_dir, exist_ok=True)
-        meta = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
-            'matches': len(getattr(self.data_processor, 'matches_data', []) or []),
-            'is_trained': bool(self.is_trained)
-        }
-        # Save classifier-related parts
-        joblib.dump(self.model, os.path.join(model_dir, 'classifier.joblib'))
-        joblib.dump(self.label_encoders, os.path.join(model_dir, 'label_encoders.joblib'))
-        # Phase models
-        joblib.dump(self.phase_runs_model, os.path.join(model_dir, 'phase_runs.joblib'))
-        joblib.dump(self.phase_wkts_model, os.path.join(model_dir, 'phase_wkts.joblib'))
-        joblib.dump(self.phase_encoders, os.path.join(model_dir, 'phase_encoders.joblib'))
-        joblib.dump(meta, os.path.join(model_dir, 'meta.joblib'))
-        return meta
-
-    def load_models(self, model_dir: str = 'models') -> bool:
-        """Load saved models if available. Returns True if loaded."""
-        if joblib is None:
-            return False
-        try:
-            clf_path = os.path.join(model_dir, 'classifier.joblib')
-            enc_path = os.path.join(model_dir, 'label_encoders.joblib')
-            if not (os.path.exists(clf_path) and os.path.exists(enc_path)):
-                return False
-            self.model = joblib.load(clf_path)
-            self.label_encoders = joblib.load(enc_path)
-            self.phase_runs_model = joblib.load(os.path.join(model_dir, 'phase_runs.joblib')) if os.path.exists(os.path.join(model_dir, 'phase_runs.joblib')) else None
-            self.phase_wkts_model = joblib.load(os.path.join(model_dir, 'phase_wkts.joblib')) if os.path.exists(os.path.join(model_dir, 'phase_wkts.joblib')) else None
-            self.phase_encoders = joblib.load(os.path.join(model_dir, 'phase_encoders.joblib')) if os.path.exists(os.path.join(model_dir, 'phase_encoders.joblib')) else {}
-            self.is_trained = True if self.model is not None else False
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to load models: {e}")
-            return False
     
     def _prepare_training_data(self):
         """Prepare training data from historical matches"""
@@ -378,8 +308,10 @@ class WinPredictor:
     def predict_match_outcome(self, match_details):
         """Predict the outcome of a match"""
         if not self.is_trained:
-            # Build a consistent, rich heuristic response instead of returning an error
-            return self._heuristic_full_response(match_details)
+            return {
+                'error': 'Model not trained. Insufficient historical data.',
+                'fallback_prediction': self._fallback_prediction(match_details)
+            }
         
         try:
             # Prepare input data
@@ -442,120 +374,6 @@ class WinPredictor:
             return {
                 'error': str(e),
                 'fallback_prediction': self._fallback_prediction(match_details)
-            }
-
-    def _heuristic_full_response(self, match_details):
-        """Return a fully shaped prediction using heuristics when ML model is unavailable."""
-        try:
-            team1 = match_details.get('team1') or 'Team 1'
-            team2 = match_details.get('team2') or 'Team 2'
-            venue = match_details.get('venue') or ''
-            fmt = match_details.get('format') or 'ODI'
-            t1_players = match_details.get('team1_players') or []
-            t2_players = match_details.get('team2_players') or []
-
-            # Overall expected via venue + form
-            exp_scores = self._estimate_expected_scores({
-                'venue': venue,
-                'format': fmt,
-                'team1': team1,
-                'team2': team2
-            })
-
-            # Phasewise expected (falls back to venue baselines if phase models not trained)
-            phase_expected = self.predict_phasewise_expected({
-                'venue': venue,
-                'format': fmt,
-                'team1': team1,
-                'team2': team2
-            })
-
-            # Heuristic probabilities from expected totals/wickets and toss
-            fb = self._fallback_prediction({
-                'team1': team1,
-                'team2': team2,
-                'toss_winner': match_details.get('toss_winner'),
-                'toss_decision': match_details.get('toss_decision')
-            })
-            team1_win = fb.get('team1_win_probability', 50.0)
-            team2_win = fb.get('team2_win_probability', 50.0)
-            predicted_winner = fb.get('predicted_winner', team1 if team1_win >= team2_win else team2)
-            confidence = fb.get('confidence', max(team1_win, team2_win))
-
-            # Key battles and MoM importance
-            key_battles, player_h2h = self._compute_key_battles(t1_players, t2_players)
-            mom_importance = self._compute_mom_importance(t1_players + t2_players) if (t1_players or t2_players) else {}
-
-            # Reasons (5 concise)
-            reasons = []
-            t1s, t2s = exp_scores.get('team1_expected_score'), exp_scores.get('team2_expected_score')
-            if t1s and t2s:
-                diff = int(abs(t1s - t2s))
-                lead = team1 if t1s > t2s else team2
-                reasons.append(f"{lead} higher expected total by {diff} runs")
-            t1w, t2w = exp_scores.get('team1_expected_wickets'), exp_scores.get('team2_expected_wickets')
-            if t1w and t2w:
-                diffw = int(abs(t1w - t2w))
-                leadw = team1 if t2w > t1w else team2  # fewer wickets expected lost = advantage
-                if diffw:
-                    reasons.append(f"{leadw} stronger batting stability (wickets)")
-            va = self._get_venue_analysis(venue)
-            if va:
-                bf = va.get('bat_first_advantage')
-                if bf is not None:
-                    reasons.append("Venue batting-first advantage impacts outcome")
-            if match_details.get('toss_winner'):
-                reasons.append("Toss outcome provides a small edge")
-            if not reasons:
-                reasons.append("Recent form and venue trends drive the prediction")
-            while len(reasons) < 5:
-                reasons.append("Combined historical patterns and heuristics")
-
-            return {
-                'team1': team1,
-                'team2': team2,
-                'predictions': {
-                    'team1_win_probability': round(float(team1_win), 2),
-                    'team2_win_probability': round(float(team2_win), 2),
-                    'predicted_winner': predicted_winner,
-                    'confidence': round(float(confidence), 2)
-                },
-                'factors': {},
-                'reasons': reasons[:5],
-                'historical_h2h': self._get_historical_head_to_head(team1, team2),
-                'venue_analysis': va,
-                'toss_impact': self._get_toss_impact_analysis(venue),
-                'expected': exp_scores,
-                'phase_expected': phase_expected,
-                'key_battles': key_battles,
-                'mom_importance': mom_importance,
-                'player_h2h': player_h2h,
-                'model_trained': False
-            }
-        except Exception as e:
-            logger.error(f"Heuristic prediction failed: {e}")
-            # Final minimal fallback
-            fb = self._fallback_prediction(match_details)
-            return {
-                'team1': match_details.get('team1'),
-                'team2': match_details.get('team2'),
-                'predictions': {
-                    'team1_win_probability': fb.get('team1_win_probability', 50.0),
-                    'team2_win_probability': fb.get('team2_win_probability', 50.0),
-                    'predicted_winner': fb.get('predicted_winner'),
-                    'confidence': fb.get('confidence')
-                },
-                'factors': {},
-                'reasons': ["Heuristic fallback used due to limited data"],
-                'historical_h2h': self._get_historical_head_to_head(match_details.get('team1'), match_details.get('team2')),
-                'venue_analysis': self._get_venue_analysis(match_details.get('venue')),
-                'toss_impact': self._get_toss_impact_analysis(match_details.get('venue')),
-                'expected': self._estimate_expected_scores(match_details),
-                'phase_expected': self.predict_phasewise_expected(match_details),
-                'key_battles': [],
-                'mom_importance': {},
-                'player_h2h': {},
-                'model_trained': False
             }
 
     def _format_top_reasons(self, feature_importance, match_details):
@@ -711,10 +529,9 @@ class WinPredictor:
                 if rec['balls'] >= min_balls:
                     sr = (rec['runs']/rec['balls']*100) if rec['balls']>0 else 0
                     avg = (rec['runs']/rec['outs']) if rec['outs']>0 else rec['runs']
-                    score = rec['runs'] + 25*rec['outs'] + 0.1*sr - 0.02*rec['balls']
-                    battles.append({'batter': batter, 'bowler': opp, 'runs': rec['runs'], 'balls': rec['balls'], 'outs': rec['outs'], 'sr': round(sr,1), 'avg': round(avg,1), 'score': round(score,2)})
-        # sort by improved composite score emphasizing dismissals and productivity
-        battles.sort(key=lambda x: x['score'], reverse=True)
+                    battles.append({'batter': batter, 'bowler': opp, 'runs': rec['runs'], 'balls': rec['balls'], 'outs': rec['outs'], 'sr': round(sr,1), 'avg': round(avg,1)})
+        # sort by a composite score
+        battles.sort(key=lambda x: (x['runs'], -x['outs'], x['sr']), reverse=True)
         return battles[:10], per_player
 
     def _compute_mom_importance(self, players):
