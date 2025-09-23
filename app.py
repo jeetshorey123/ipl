@@ -11,7 +11,7 @@ from data_processor import CricketDataProcessor
 from player_stats import PlayerStatsCalculator
 from venue_analyzer import VenueAnalyzer
 from team_analyzer import TeamAnalyzer
-# Supabase is no longer used; local JSON mode only
+from supabase_client import supabase_client
 
 load_dotenv()
 app = Flask(__name__)
@@ -22,7 +22,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 """Initialize data processor and start background load.
-By default, prefer GitHub data (zip download) if GITHUB_LOAD=true; otherwise fall back to local data/ folder.
+Priority order:
+1) Supabase (if SUPABASE_LOAD=true or connectivity detected)
+2) GitHub ZIP data (if GITHUB_LOAD=true)
+3) Local data/ folder (fallback)
 """
 data_processor = CricketDataProcessor('data/')
 try:
@@ -39,11 +42,21 @@ try:
         max_workers = 24
     # GitHub load toggle and repo params
     use_github = (os.getenv('GITHUB_LOAD') or '').strip().lower() in {'1', 'true', 'yes'}
+    use_supabase = (os.getenv('SUPABASE_LOAD') or '').strip().lower() in {'1', 'true', 'yes'}
     repo_owner = (os.getenv('GITHUB_REPO_OWNER') or 'jeetshorey123').strip()
     repo_name = (os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
     repo_branch = (os.getenv('GITHUB_REPO_BRANCH') or 'main').strip()
     repo_subdir = (os.getenv('GITHUB_REPO_SUBDIR') or 'data').strip()
-    if use_github:
+    if use_supabase or (not use_github and supabase_client and getattr(supabase_client, 'is_connected', False)):
+        # Optional limit for number of files from storage
+        max_files_env = (os.getenv('SUPABASE_MAX_FILES') or '').strip()
+        try:
+            max_files = int(float(max_files_env)) if max_files_env else None
+        except Exception:
+            max_files = None
+        logger.info("Starting background Supabase load")
+        data_processor.start_background_supabase_load(max_workers=max_workers, max_files=max_files)
+    elif use_github:
         logger.info(f"Starting background GitHub load: {repo_owner}/{repo_name}@{repo_branch} subdir={repo_subdir}")
         data_processor.start_background_github_load(repo_owner=repo_owner, repo_name=repo_name, branch=repo_branch, subdir=repo_subdir, max_workers=max_workers, max_unique_matches=default_max_unique)
     else:
@@ -131,7 +144,9 @@ def reload_data():
                 max_unique = int(float(uniq_env)) if uniq_env else 3613
             except Exception:
                 max_unique = 3613
-        if mode == 'github':
+        if mode == 'supabase':
+            res = data_processor.reload_from_supabase(max_files=max_files)
+        elif mode == 'github':
             repo_owner = (payload.get('repo_owner') or os.getenv('GITHUB_REPO_OWNER') or 'jeetshorey123').strip()
             repo_name = (payload.get('repo_name') or os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
             repo_branch = (payload.get('repo_branch') or os.getenv('GITHUB_REPO_BRANCH') or 'main').strip()

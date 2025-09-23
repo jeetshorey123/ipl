@@ -449,6 +449,8 @@ class CricketDataProcessor:
                 def download_parse(key: str):
                     backoff = 0.2
                     attempts = 5
+                    success = False
+                    last_err = None
                     for attempt in range(attempts):
                         try:
                             data_bytes = storage.download(key)
@@ -460,16 +462,18 @@ class CricketDataProcessor:
                                 self._ingest_match(match_data)
                                 with self._lock:
                                     self._ingested_keys.add(key)
-                            return
+                            success = True
+                            break
                         except Exception as de:
+                            last_err = de
                             if attempt < attempts - 1:
                                 time.sleep(backoff)
                                 backoff *= 2
                             else:
                                 logger.warning(f"Failed to download/parse '{key}' after {attempts} attempts: {de}")
-                        finally:
-                            with self._lock:
-                                self._files_loaded += 1
+                    # Count this key as processed once per key
+                    with self._lock:
+                        self._files_loaded += 1
 
                 # Use a reasonable pool size
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
