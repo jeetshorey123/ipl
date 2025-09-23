@@ -22,8 +22,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 """Initialize data processor and start background load.
-Priority order:
-1) Supabase (if SUPABASE_LOAD=true or connectivity detected)
+Priority order (explicit-only; no auto-detect):
+1) Supabase (if SUPABASE_LOAD=true)
 2) GitHub ZIP data (if GITHUB_LOAD=true)
 3) Local data/ folder (fallback)
 """
@@ -47,7 +47,7 @@ try:
     repo_name = (os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
     repo_branch = (os.getenv('GITHUB_REPO_BRANCH') or 'main').strip()
     repo_subdir = (os.getenv('GITHUB_REPO_SUBDIR') or 'data').strip()
-    if use_supabase or (not use_github and supabase_client and getattr(supabase_client, 'is_connected', False)):
+    if use_supabase:
         # Optional limit for number of files from storage
         max_files_env = (os.getenv('SUPABASE_MAX_FILES') or '').strip()
         try:
