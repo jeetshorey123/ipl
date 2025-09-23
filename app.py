@@ -22,17 +22,29 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize data processor (Supabase-only); local JSON loading is disabled by design
+# Initialize data processor (Supabase-only per requirements; local path unused)
 data_processor = CricketDataProcessor('data/')
 # Begin background loading of matches from Supabase for fast startup
 try:
+    # Configure number of files and workers from env; by default load ALL files quickly
     max_files_env = os.getenv('SUPABASE_MAX_FILES')
+    max_workers_env = os.getenv('SUPABASE_MAX_WORKERS')
     try:
-        # Default to 5 files if not explicitly configured
-        max_files_val = int(float(max_files_env)) if max_files_env else 5
+        max_files_val = int(float(max_files_env)) if (max_files_env not in [None, '', 'none', 'null']) else None
+        if isinstance(max_files_val, int) and max_files_val <= 0:
+            max_files_val = None
     except Exception:
-        max_files_val = 5
-    data_processor.start_background_supabase_load(max_workers=16, max_files=max_files_val)
+        max_files_val = None
+    try:
+        max_workers_val = int(float(max_workers_env)) if max_workers_env else 24
+        # Bound workers to a reasonable range
+        if max_workers_val < 4:
+            max_workers_val = 4
+        if max_workers_val > 64:
+            max_workers_val = 64
+    except Exception:
+        max_workers_val = 24
+    data_processor.start_background_supabase_load(max_workers=max_workers_val, max_files=max_files_val)
 except Exception:
     logger.exception("Failed to start background load")
 player_stats = PlayerStatsCalculator(data_processor)
@@ -565,11 +577,31 @@ def data_health():
             'supabase_connected': True if 'supabase_client' in globals() and supabase_client and supabase_client.is_connected else False
         }
         status = dp.get_loading_status() if hasattr(dp, 'get_loading_status') else {}
-        # Include background loading status
-        base.update({'loading': status.get('loading'), 'files_loaded': status.get('files_loaded'), 'total_files': status.get('total_files')})
+        # Include full background loading status including percentage and ETA
+        if isinstance(status, dict):
+            base.update(status)
         return jsonify(base)
     except Exception as e:
         logger.error(f"Error in data health: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/data/retry-missing', methods=['POST'])
+def retry_missing():
+    """Re-attempt downloading only the missing files from Supabase storage."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        max_workers = payload.get('max_workers')
+        try:
+            if isinstance(max_workers, str):
+                max_workers = int(float(max_workers.strip()))
+            elif not isinstance(max_workers, int):
+                max_workers = None
+        except Exception:
+            max_workers = None
+        res = data_processor.retry_missing_files(max_workers=max_workers or 6)
+        return jsonify(res)
+    except Exception as e:
+        logger.error(f"Error retrying missing files: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/venue-analysis/<venue_name>')

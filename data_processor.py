@@ -32,6 +32,9 @@ class CricketDataProcessor:
         self._total_files = 0
         self._files_loaded = 0
         self._ingested_keys = set()
+        self._all_keys = []
+        self._load_started_at = None
+        self._last_progress_ts = None
         # Supabase-only data source per requirements
         if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
             logger.error("Supabase not configured or not connected. No local data fallback per requirements.")
@@ -171,16 +174,20 @@ class CricketDataProcessor:
         self._loading = True
         self._files_loaded = 0
         self._ingested_keys = set()
+        self._all_keys = []
+        self._load_started_at = time.time()
+        self._last_progress_ts = self._load_started_at
 
         def worker():
             try:
                 bucket = getattr(supabase_client, 'bucket_name', None)
                 storage = supabase_client.supabase.storage.from_(bucket) if bucket else None
-                # List all json keys across bucket (from root if no prefix)
+                # List all json keys across bucket (from root if no prefix) with pagination
                 keys = supabase_client.list_json_files(bucket=bucket, prefix=supabase_client.bucket_prefix or '')
                 if max_files is not None and isinstance(max_files, int) and max_files > 0:
                     keys = keys[:max_files]
                 self._total_files = len(keys)
+                self._all_keys = list(keys)
                 if not keys:
                     # Fallback to table if no storage files
                     logger.info("No JSON files in storage; trying table fallback...")
@@ -192,34 +199,52 @@ class CricketDataProcessor:
                     return
 
                 logger.info(f"Background loading {len(keys)} JSON files from Supabase Storage with {max_workers} workers... (limit: {max_files if max_files else 'all'})")
-                # Download + parse concurrently
-                def download_parse(key: str):
-                    backoff = 0.2
-                    attempts = 5
-                    for attempt in range(attempts):
+                # Prefer using supabase_client concurrent downloader when available for speed
+                objects = []
+                try:
+                    objects = supabase_client.download_jsons_concurrently(keys, bucket=bucket, max_workers=max_workers)
+                except Exception:
+                    objects = []
+                if objects:
+                    # objects is a list of (path, obj) pairs
+                    for key, obj in objects:
                         try:
-                            data_bytes = storage.download(key)
-                            text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
-                            obj = json.loads(text)
-                            # Accept either full match or nested structures
                             match_data = self._extract_match_from_row(obj)
                             if match_data:
                                 self._ingest_match(match_data)
                                 with self._lock:
                                     self._ingested_keys.add(key)
-                            return
-                        except Exception as de:
-                            if attempt < attempts - 1:
-                                time.sleep(backoff)
-                                backoff *= 2
-                            else:
-                                logger.warning(f"Failed to download/parse '{key}' after {attempts} attempts: {de}")
+                                    self._last_progress_ts = time.time()
+                        except Exception:
+                            continue
+                else:
+                    # Fallback to manual concurrent download with retries
+                    def download_parse(key: str):
+                        backoff = 0.2
+                        attempts = 5
+                        for attempt in range(attempts):
+                            try:
+                                data_bytes = storage.download(key)
+                                text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
+                                obj = json.loads(text)
+                                match_data = self._extract_match_from_row(obj)
+                                if match_data:
+                                    self._ingest_match(match_data)
+                                    with self._lock:
+                                        self._ingested_keys.add(key)
+                                        self._last_progress_ts = time.time()
+                                return
+                            except Exception as de:
+                                if attempt < attempts - 1:
+                                    time.sleep(backoff)
+                                    backoff *= 2
+                                else:
+                                    logger.warning(f"Failed to download/parse '{key}' after {attempts} attempts: {de}")
 
-                # Use a reasonable pool size
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = [executor.submit(download_parse, k) for k in keys]
-                    for _ in as_completed(futures):
-                        pass
+                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        futures = [executor.submit(download_parse, k) for k in keys]
+                        for _ in as_completed(futures):
+                            pass
                 # If any missing, try a second, smaller pass
                 missing = []
                 with self._lock:
@@ -231,6 +256,25 @@ class CricketDataProcessor:
                         futures = [executor.submit(download_parse, k) for k in missing]
                         for _ in as_completed(futures):
                             pass
+                    # Recompute missing after second pass
+                    with self._lock:
+                        missing = [k for k in keys if k not in self._ingested_keys]
+                # Final serial attempts
+                if missing:
+                    logger.info(f"Final pass (serial) for {len(missing)} stubborn files...")
+                    for k in missing:
+                        try:
+                            data_bytes = storage.download(k)
+                            text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
+                            obj = json.loads(text)
+                            match_data = self._extract_match_from_row(obj)
+                            if match_data:
+                                self._ingest_match(match_data)
+                                with self._lock:
+                                    self._ingested_keys.add(k)
+                                    self._last_progress_ts = time.time()
+                        except Exception as e:
+                            logger.warning(f"Still failed '{k}': {e}")
                 logger.info(f"Background load complete: {self._files_loaded}/{self._total_files} files ingested")
             except Exception as e:
                 logger.error(f"Background load failed: {e}")
@@ -265,11 +309,107 @@ class CricketDataProcessor:
     def get_loading_status(self) -> Dict[str, Any]:
         """Return background loading progress."""
         try:
+            now = time.time()
+            elapsed = None
+            eta_seconds = None
+            pct = None
+            missing = []
+            if self._load_started_at:
+                elapsed = max(0, now - self._load_started_at)
+            if self._total_files and self._files_loaded is not None:
+                try:
+                    pct = round((self._files_loaded / max(self._total_files, 1)) * 100, 1)
+                except Exception:
+                    pct = None
+                if elapsed and elapsed > 0 and self._files_loaded > 0:
+                    rate = self._files_loaded / elapsed
+                    remaining = max(self._total_files - self._files_loaded, 0)
+                    if rate > 0:
+                        eta_seconds = int(remaining / rate)
+            if self._all_keys:
+                missing = [k for k in self._all_keys if k not in self._ingested_keys]
+
+            def _fmt_secs(s):
+                if s is None:
+                    return None
+                m, s = divmod(int(s), 60)
+                h, m = divmod(m, 60)
+                return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
             return {
                 'loading': self._loading,
                 'files_loaded': self._files_loaded,
                 'total_files': self._total_files,
                 'matches_loaded': len(self.matches_data),
+                'started_at': self._load_started_at,
+                'last_progress_ts': self._last_progress_ts,
+                'elapsed_seconds': int(elapsed) if elapsed is not None else None,
+                'eta_seconds': eta_seconds,
+                'eta_pretty': _fmt_secs(eta_seconds),
+                'percentage': pct,
+                'missing_count': len(missing) if missing else 0,
+                'missing_sample': missing[:10] if missing else []
+            }
+        except Exception as e:
+            return {'error': str(e)}
+
+    def retry_missing_files(self, max_workers: int = 6) -> Dict[str, Any]:
+        """Retry downloading only the missing files from Supabase storage.
+        Uses conservative concurrency and exponential backoff to handle transient errors.
+        """
+        if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
+            return {'error': 'Supabase not connected'}
+        try:
+            bucket = getattr(supabase_client, 'bucket_name', None)
+            if not bucket:
+                return {'error': 'Bucket not configured'}
+            storage = supabase_client.supabase.storage.from_(bucket)
+            with self._lock:
+                keys = list(self._all_keys)
+                ingested = set(self._ingested_keys)
+            missing = [k for k in keys if k not in ingested]
+            if not missing:
+                return {'message': 'No missing files to retry', 'missing_count': 0}
+
+            def download_parse(key: str):
+                backoff = 0.3
+                attempts = 5
+                for attempt in range(attempts):
+                    try:
+                        data_bytes = storage.download(key)
+                        text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
+                        obj = json.loads(text)
+                        match_data = self._extract_match_from_row(obj)
+                        if match_data:
+                            self._ingest_match(match_data)
+                            with self._lock:
+                                self._ingested_keys.add(key)
+                                self._last_progress_ts = time.time()
+                            return True
+                        return False
+                    except Exception:
+                        if attempt < attempts - 1:
+                            time.sleep(backoff)
+                            backoff *= 2
+                        else:
+                            return False
+
+            succeeded = 0
+            with ThreadPoolExecutor(max_workers=max(2, min(max_workers, 12))) as executor:
+                futures = {executor.submit(download_parse, k): k for k in missing}
+                for fut in as_completed(futures):
+                    try:
+                        if fut.result():
+                            succeeded += 1
+                    except Exception:
+                        pass
+
+            with self._lock:
+                still_missing = [k for k in self._all_keys if k not in self._ingested_keys]
+            return {
+                'retried': len(missing),
+                'succeeded': succeeded,
+                'still_missing': len(still_missing),
+                'missing_sample': still_missing[:10]
             }
         except Exception as e:
             return {'error': str(e)}

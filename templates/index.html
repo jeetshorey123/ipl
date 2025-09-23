@@ -85,6 +85,10 @@
                     <h3 class="text-primary" id="totalMatches">-</h3>
                     <p class="text-muted mb-0">Matches Loaded</p>
                     <small class="text-muted" id="loadProgress"></small>
+                    <div class="mt-2" id="missingWrap" style="display:none">
+                        <small class="text-warning">Missing: <span id="missingCount">0</span></small>
+                        <button class="btn btn-sm btn-outline-warning ms-2" id="retryMissingBtn">Retry Missing</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -309,7 +313,32 @@ function startHealthPolling() {
     const statPlayersEl = document.getElementById('statPlayers');
     const progressEl = document.getElementById('loadProgress');
     const statProgressEl = document.getElementById('statProgress');
+    const missingWrap = document.getElementById('missingWrap');
+    const missingCountEl = document.getElementById('missingCount');
+    const retryBtn = document.getElementById('retryMissingBtn');
     let timer = null;
+    if (retryBtn) {
+        retryBtn.addEventListener('click', () => {
+            retryBtn.disabled = true;
+            retryBtn.textContent = 'Retrying...';
+            fetch('/api/data/retry-missing', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})})
+                .then(r => r.json())
+                .then(res => {
+                    retryBtn.textContent = 'Retry Missing';
+                    retryBtn.disabled = false;
+                    if (res.error) {
+                        alert('Retry failed: ' + res.error);
+                    } else {
+                        const msg = `Retried ${res.retried}, succeeded ${res.succeeded}, still missing ${res.still_missing}`;
+                        alert(msg);
+                    }
+                })
+                .catch(() => {
+                    retryBtn.textContent = 'Retry Missing';
+                    retryBtn.disabled = false;
+                });
+        });
+    }
     const update = () => {
         fetch('/api/data/health')
             .then(r => r.json())
@@ -322,9 +351,21 @@ function startHealthPolling() {
                 if (typeof h.players_count === 'number' && statPlayersEl) {
                     statPlayersEl.textContent = h.players_count.toLocaleString();
                 }
-                const msg = total ? `${h.files_loaded ?? loaded}/${total} files` : (loading ? 'Loading…' : '');
-                progressEl.textContent = msg;
-                statProgressEl.textContent = msg;
+                let msg = '';
+                if (total) {
+                    const pct = (h.percentage != null) ? `${h.percentage}%` : '';
+                    const eta = h.eta_pretty ? ` • ETA ${h.eta_pretty}` : '';
+                    msg = `${h.files_loaded ?? loaded}/${total} files ${pct}${eta}`;
+                } else if (loading) {
+                    msg = 'Loading…';
+                }
+                if (progressEl) progressEl.textContent = msg;
+                if (statProgressEl) statProgressEl.textContent = msg;
+                if (missingWrap && missingCountEl) {
+                    const mc = h.missing_count || 0;
+                    missingCountEl.textContent = mc;
+                    missingWrap.style.display = (mc > 0) ? 'block' : 'none';
+                }
                 if (!loading && timer) {
                     clearInterval(timer);
                     timer = null;

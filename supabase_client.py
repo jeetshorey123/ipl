@@ -195,7 +195,8 @@ class SupabaseClient:
                         mimetype = meta.get('mimetype') or meta.get('contentType')
                         is_file = bool(mimetype) or ('.' in name)
                         if is_file:
-                            if name.lower().endswith('.json'):
+                            mimetype_str = (str(mimetype).lower() if mimetype else '')
+                            if name.lower().endswith('.json') or ('json' in mimetype_str):
                                 found.append(full_path)
                         else:
                             to_visit.append(full_path)
@@ -299,8 +300,10 @@ class SupabaseClient:
                     meta = it.get('metadata') or {}
                     mimetype = meta.get('mimetype') or meta.get('contentType')
                     is_file = bool(mimetype) or ('.' in name)
-                    if is_file and name.lower().endswith('.json'):
-                        found.append(full_path)
+                    if is_file:
+                        mimetype_str = (str(mimetype).lower() if mimetype else '')
+                        if name.lower().endswith('.json') or ('json' in mimetype_str):
+                            found.append(full_path)
                         if max_paths and len(found) >= max_paths:
                             return found
                     elif not is_file:
@@ -317,28 +320,44 @@ class SupabaseClient:
                     break
         return files[:max_paths] if max_paths else files
 
-    def download_jsons_concurrently(self, file_paths: List[str], bucket: Optional[str] = None, max_workers: int = 12) -> List[Dict[str, Any]]:
-        """Download and parse many JSON files concurrently for speed."""
+    def download_jsons_concurrently(self, file_paths: List[str], bucket: Optional[str] = None, max_workers: int = 12):
+        """Download and parse many JSON files concurrently for speed.
+        Returns a list of (path, object) tuples for accurate mapping.
+        """
         if not self.is_connected or not self.supabase or not file_paths:
             return []
         bucket = bucket or self.bucket_name
         if not bucket:
             return []
-        results: List[Dict[str, Any]] = []
+        results: List[tuple[str, Dict[str, Any]]] = []
         storage = self.supabase.storage.from_(bucket)
 
         def fetch(path: str):
-            data_bytes = storage.download(path)
-            text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
-            return json.loads(text)
+            attempts = 5
+            backoff = 0.2
+            for attempt in range(attempts):
+                try:
+                    data_bytes = storage.download(path)
+                    text = data_bytes.decode('utf-8') if isinstance(data_bytes, (bytes, bytearray)) else str(data_bytes)
+                    return path, json.loads(text)
+                except Exception as e:
+                    msg = str(e) if e else ''
+                    # Treat Windows non-blocking socket error 10035 and similar as transient
+                    transient = ('10035' in msg) or ('non-blocking socket operation' in msg.lower())
+                    if attempt < attempts - 1 and transient:
+                        import time
+                        time.sleep(backoff)
+                        backoff = min(backoff * 2, 2.0)
+                        continue
+                    raise
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {executor.submit(fetch, p): p for p in file_paths}
             for fut in as_completed(future_map):
                 try:
-                    obj = fut.result()
+                    path, obj = fut.result()
                     if isinstance(obj, dict):
-                        results.append(obj)
+                        results.append((path, obj))
                 except Exception as de:
                     path = future_map[fut]
                     logger.warning(f"Failed to download/parse '{path}': {de}")
