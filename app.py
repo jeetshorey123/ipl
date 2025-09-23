@@ -54,8 +54,19 @@ try:
             max_files = int(float(max_files_env)) if max_files_env else None
         except Exception:
             max_files = None
+        # Supabase workers and unique cap
+        sup_workers_raw = (os.getenv('SUPABASE_MAX_WORKERS') or '').strip()
+        try:
+            sup_max_workers = int(float(sup_workers_raw)) if sup_workers_raw else max_workers
+        except Exception:
+            sup_max_workers = max_workers
+        sup_unique_raw = (os.getenv('SUPABASE_MAX_UNIQUE_MATCHES') or '').strip()
+        try:
+            sup_max_unique = int(float(sup_unique_raw)) if sup_unique_raw else 3612
+        except Exception:
+            sup_max_unique = 3612
         logger.info("Starting background Supabase load")
-        data_processor.start_background_supabase_load(max_workers=max_workers, max_files=max_files)
+        data_processor.start_background_supabase_load(max_workers=sup_max_workers, max_files=max_files, max_unique_matches=sup_max_unique)
     elif use_github:
         logger.info(f"Starting background GitHub load: {repo_owner}/{repo_name}@{repo_branch} subdir={repo_subdir}")
         data_processor.start_background_github_load(repo_owner=repo_owner, repo_name=repo_name, branch=repo_branch, subdir=repo_subdir, max_workers=max_workers, max_unique_matches=default_max_unique)
@@ -116,7 +127,7 @@ def reload_data():
     """Force reload from local data directory (clears caches)."""
     try:
         payload = request.get_json(silent=True) or {}
-        mode = (payload.get('mode') or '').strip().lower()  # 'github' or 'local'
+        mode = (payload.get('mode') or '').strip().lower()  # 'supabase'|'github'|'local'
         max_files = payload.get('max_files')
         try:
             if isinstance(max_files, str):
@@ -139,13 +150,28 @@ def reload_data():
         except Exception:
             max_unique = None
         if max_unique is None:
-            uniq_env = (os.getenv('LOCAL_MAX_UNIQUE_MATCHES') or '').strip()
-            try:
-                max_unique = int(float(uniq_env)) if uniq_env else 3613
-            except Exception:
-                max_unique = 3613
+            # Use Supabase default 3612 when reloading supabase; otherwise local default 3613
+            if mode == 'supabase':
+                uniq_env = (os.getenv('SUPABASE_MAX_UNIQUE_MATCHES') or '').strip()
+                try:
+                    max_unique = int(float(uniq_env)) if uniq_env else 3612
+                except Exception:
+                    max_unique = 3612
+            else:
+                uniq_env = (os.getenv('LOCAL_MAX_UNIQUE_MATCHES') or '').strip()
+                try:
+                    max_unique = int(float(uniq_env)) if uniq_env else 3613
+                except Exception:
+                    max_unique = 3613
         if mode == 'supabase':
-            res = data_processor.reload_from_supabase(max_files=max_files)
+            # If max_workers unspecified, use SUPABASE_MAX_WORKERS or fallback to 24
+            if not max_workers:
+                sw_raw = (os.getenv('SUPABASE_MAX_WORKERS') or '').strip()
+                try:
+                    max_workers = int(float(sw_raw)) if sw_raw else 24
+                except Exception:
+                    max_workers = 24
+            res = data_processor.reload_from_supabase(max_files=max_files, max_unique_matches=max_unique, max_workers=max_workers)
         elif mode == 'github':
             repo_owner = (payload.get('repo_owner') or os.getenv('GITHUB_REPO_OWNER') or 'jeetshorey123').strip()
             repo_name = (payload.get('repo_name') or os.getenv('GITHUB_REPO_NAME') or 'ipl').strip()
