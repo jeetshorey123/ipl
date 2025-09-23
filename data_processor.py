@@ -29,8 +29,15 @@ class CricketDataProcessor:
         # Background loading state
         self._loading = False
         self._total_files = 0
+        # Count of files processed (attempted reads), not the same as unique matches ingested
         self._files_loaded = 0
+        # Count of unique matches ingested
+        self._matches_ingested = 0
         self._ingested_keys = set()
+        # Track unique match signatures to avoid duplicates across repeated files
+        self._ingested_match_keys = set()
+        # Stop flag when max unique matches cap reached
+        self._stop_requested = False
         # Supabase may not be configured in local-only mode; that's fine.
         if not (supabase_client and getattr(supabase_client, 'is_connected', False)):
             logger.info("Supabase not configured/connected; running in local JSON mode if requested.")
@@ -63,14 +70,17 @@ class CricketDataProcessor:
         except Exception:
             return default
     
-    def load_all_matches(self, limit_matches: int | None = None, max_workers: int = 16):
+    def load_all_matches(self, limit_matches: int | None = None, max_workers: int = 16, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None):
         """Load match data from local JSON files under data_directory.
         - If limit_matches is None or <= 0, load all files.
         - Uses a thread pool to parse JSON files concurrently for speed.
         - Updates background-loading status fields so the dashboard can display progress.
         """
         try:
-            json_files = glob.glob(os.path.join(self.data_directory, "*.json"))
+            pattern = include_pattern or "*.json"
+            # Enable recursive search when pattern includes '**'
+            recursive = True if ('**' in pattern) else False
+            json_files = glob.glob(os.path.join(self.data_directory, pattern), recursive=recursive)
             # Normalize limit
             if isinstance(limit_matches, (int, float)):
                 try:
@@ -87,10 +97,13 @@ class CricketDataProcessor:
                 self._loading = True
                 self._total_files = len(json_files)
                 self._files_loaded = 0
+                self._matches_ingested = 0
                 self.matches_data = []
                 self.players_cache = set()
                 self.teams_cache = set()
                 self.venues_cache = set()
+                self._ingested_match_keys = set()
+                self._stop_requested = False
 
             logger.info(
                 f"Loading local match data from '{self.data_directory}' with {max_workers} workers "
@@ -99,15 +112,35 @@ class CricketDataProcessor:
 
             def read_and_ingest(file_path: str):
                 try:
+                    # Early exit if cap reached
+                    with self._lock:
+                        if self._stop_requested:
+                            return
                     with open(file_path, 'r', encoding='utf-8') as f:
                         raw = json.load(f)
                     # Some files could contain nested structure; normalize via extractor
                     match = self._extract_match_from_row(raw) if isinstance(raw, (dict, list, str)) else None
                     match_data = match if match else raw if isinstance(raw, dict) else None
                     if match_data:
-                        self._ingest_match(match_data)
+                        # Deduplicate by a stable match signature
+                        key = self._compute_match_key(match_data)
+                        ingest = False
+                        with self._lock:
+                            if key not in self._ingested_match_keys and (max_unique_matches is None or self._matches_ingested < max_unique_matches):
+                                self._ingested_match_keys.add(key)
+                                ingest = True
+                        if ingest:
+                            self._ingest_match(match_data)
+                            # Check if we reached the cap; if so, set stop flag
+                            with self._lock:
+                                if max_unique_matches is not None and self._matches_ingested >= max_unique_matches:
+                                    self._stop_requested = True
                 except Exception as e:
                     logger.error(f"Error loading {file_path}: {e}")
+                finally:
+                    # Always count the file as processed regardless of ingest outcome
+                    with self._lock:
+                        self._files_loaded += 1
 
             # Concurrency for IO-bound loading
             workers = max(1, min(64, int(max_workers or 1)))
@@ -121,14 +154,15 @@ class CricketDataProcessor:
                         pass
 
             logger.info(
-                f"Loaded {len(self.matches_data)} matches from local JSONs | "
-                f"players={len(self.players_cache)}, teams={len(self.teams_cache)}, venues={len(self.venues_cache)}"
+                f"Loaded {len(self.matches_data)} unique matches from local JSONs | "
+                f"players={len(self.players_cache)}, teams={len(self.teams_cache)}, venues={len(self.venues_cache)} | "
+                f"files_processed={self._files_loaded}/{self._total_files}"
             )
         finally:
             with self._lock:
                 self._loading = False
 
-    def start_background_local_load(self, max_workers: int = 16, max_files: int | None = None):
+    def start_background_local_load(self, max_workers: int = 16, max_files: int | None = None, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None):
         """Start loading matches from local JSON files in the background with concurrency.
         This mirrors the Supabase background loader but reads from disk.
         """
@@ -138,7 +172,7 @@ class CricketDataProcessor:
 
         def worker():
             try:
-                self.load_all_matches(limit_matches=max_files, max_workers=max_workers)
+                self.load_all_matches(limit_matches=max_files, max_workers=max_workers, include_pattern=include_pattern, max_unique_matches=max_unique_matches)
             except Exception as e:
                 logger.error(f"Background local load failed: {e}")
             finally:
@@ -149,10 +183,11 @@ class CricketDataProcessor:
         with self._lock:
             self._loading = True
             self._files_loaded = 0
+            self._matches_ingested = 0
             # _total_files will be set inside load_all_matches after listing files
         threading.Thread(target=worker, name="LocalBackgroundLoader", daemon=True).start()
 
-    def reload_from_local(self, max_files: int | None = None, max_workers: int = 16):
+    def reload_from_local(self, max_files: int | None = None, max_workers: int = 16, include_pattern: Optional[str] = None, max_unique_matches: Optional[int] = None):
         """Clear caches and start background local load from data directory."""
         try:
             with self._lock:
@@ -162,7 +197,10 @@ class CricketDataProcessor:
                 self.venues_cache = set()
                 self._files_loaded = 0
                 self._total_files = 0
-            self.start_background_local_load(max_workers=max_workers, max_files=max_files)
+            self._matches_ingested = 0
+            self._ingested_match_keys = set()
+            self._stop_requested = False
+            self.start_background_local_load(max_workers=max_workers, max_files=max_files, include_pattern=include_pattern, max_unique_matches=max_unique_matches)
             return {
                 'matches_loaded': len(self.matches_data),
                 'players_count': len(self.players_cache),
@@ -223,7 +261,34 @@ class CricketDataProcessor:
             if 'players' in info:
                 for team, players in info['players'].items():
                     self.players_cache.update(players)
-            self._files_loaded += 1
+            self._matches_ingested += 1
+
+    def _compute_match_key(self, match: Dict[str, Any]) -> str:
+        """Compute a stable signature for a match to deduplicate duplicates across files.
+        Prefer a compact signature from key info fields; fall back to a sorted JSON dump hash.
+        """
+        try:
+            info = match.get('info', {}) if isinstance(match, dict) else {}
+            event = (info.get('event') or {}).get('name') or ''
+            dates = info.get('dates') or []
+            date0 = dates[0] if dates else ''
+            teams = info.get('teams') or []
+            teams_sig = ' vs '.join(sorted(map(str, teams)))
+            venue = info.get('venue') or ''
+            mtype = info.get('match_type') or ''
+            city = info.get('city') or ''
+            season = (info.get('season') or '')
+            parts = [str(x) for x in [event, date0, teams_sig, venue, city, mtype, season] if x is not None]
+            sig = '|'.join(parts)
+            if sig.strip():
+                return sig
+        except Exception:
+            pass
+        # Fallback to canonical JSON string (sorted keys) to catch exact duplicates
+        try:
+            return json.dumps(match, sort_keys=True, separators=(',', ':'))[:512]
+        except Exception:
+            return str(id(match))
 
     def start_background_supabase_load(self, max_workers: int = 16, max_files: int | None = None):
         """Start loading ALL matches from Supabase in the background with concurrency.
@@ -238,6 +303,7 @@ class CricketDataProcessor:
 
         self._loading = True
         self._files_loaded = 0
+        self._matches_ingested = 0
         self._ingested_keys = set()
 
         def worker():
@@ -282,6 +348,9 @@ class CricketDataProcessor:
                                 backoff *= 2
                             else:
                                 logger.warning(f"Failed to download/parse '{key}' after {attempts} attempts: {de}")
+                        finally:
+                            with self._lock:
+                                self._files_loaded += 1
 
                 # Use a reasonable pool size
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:

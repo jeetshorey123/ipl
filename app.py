@@ -11,7 +11,7 @@ from data_processor import CricketDataProcessor
 from player_stats import PlayerStatsCalculator
 from venue_analyzer import VenueAnalyzer
 from team_analyzer import TeamAnalyzer
-from supabase_client import get_supabase_status, supabase_client
+# Supabase is no longer used; local JSON mode only
 
 load_dotenv()
 app = Flask(__name__)
@@ -38,8 +38,16 @@ try:
         local_workers = int(float(local_workers_raw)) if local_workers_raw else 24
     except Exception:
         local_workers = 24
+    # Optional include pattern (e.g., '**/*.json' or '2024_*.json')
+    include_pattern = (os.getenv('LOCAL_INCLUDE_PATTERN') or '').strip() or None
+    # Enforce default cap of 3613 unique matches loaded (deduplicated) unless overridden
+    uniq_raw = (os.getenv('LOCAL_MAX_UNIQUE_MATCHES') or '').strip()
+    try:
+        default_max_unique = int(float(uniq_raw)) if uniq_raw else 3613
+    except Exception:
+        default_max_unique = 3613
     # Start non-blocking background load from local data folder
-    data_processor.start_background_local_load(max_workers=local_workers, max_files=local_limit)
+    data_processor.start_background_local_load(max_workers=local_workers, max_files=local_limit, include_pattern=include_pattern, max_unique_matches=default_max_unique)
 except Exception:
     logger.exception("Failed to start background local JSON load")
 player_stats = PlayerStatsCalculator(data_processor)
@@ -47,11 +55,7 @@ venue_analyzer = VenueAnalyzer(data_processor)
 team_analyzer = TeamAnalyzer(data_processor)
 ## Removed win predictor per request; focusing on teams, venues, and players only
 
-# Supabase environment (loaded but not required for local JSON processing)
-SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
-SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-SUPABASE_PROJECT_ID = os.getenv('SUPABASE_PROJECT_ID')
+## Removed Supabase environment and usage
 
 @app.route('/')
 def home():
@@ -81,54 +85,7 @@ def teams():
 
 ## Removed predictions page route
 
-@app.route('/api/supabase/status')
-def supabase_status():
-    """Return Supabase connectivity and table info."""
-    try:
-        status = get_supabase_status()
-        # Try listing storage top-level if configured
-        try:
-            if supabase_client and supabase_client.is_connected and supabase_client.bucket_name:
-                files = supabase_client.supabase.storage.from_(supabase_client.bucket_name).list(supabase_client.bucket_prefix or '')
-                status['storage']['top_level_count'] = len(files)
-        except Exception as se:
-            status['storage']['list_error'] = str(se)
-        return jsonify(status)
-    except Exception as e:
-        logger.error(f"Error getting Supabase status: {e}")
-        return jsonify({'connected': False, 'error': str(e)})
-
-@app.route('/api/supabase/sample')
-def supabase_sample():
-    """Fetch a small sample of rows and show extraction outcome."""
-    try:
-        if not supabase_client or not supabase_client.is_connected:
-            return jsonify({'error': 'Supabase not connected'}), 400
-        # Try from storage bucket first
-        rows = []
-        used_source = 'bucket'
-        try:
-            rows = supabase_client.get_all_matches_from_bucket(limit=3)
-        except Exception:
-            rows = []
-        if not rows:
-            used_source = 'table'
-            rows = supabase_client.get_all_matches(limit=3)
-        from data_processor import CricketDataProcessor
-        dp = CricketDataProcessor('data/')
-        samples = []
-        for row in rows:
-            try:
-                match = dp._extract_match_from_row(row)
-                ok = bool(match and 'info' in match and 'innings' in match)
-                keys = list(row.keys()) if isinstance(row, dict) else (['<json-from-bucket>'] if isinstance(row, dict) else [])
-                samples.append({'row_type': type(row).__name__, 'row_keys': keys, 'extracted': ok, 'info_keys': list(match.get('info', {}).keys()) if ok else []})
-            except Exception as e:
-                samples.append({'error': str(e)})
-        return jsonify({'source': used_source, 'count': len(rows), 'samples': samples})
-    except Exception as e:
-        logger.error(f"Error fetching Supabase sample: {e}")
-        return jsonify({'error': str(e)}), 500
+## Removed Supabase status/sample endpoints
 
 @app.route('/api/data/reload', methods=['POST'])
 def reload_data():
@@ -148,91 +105,27 @@ def reload_data():
                 max_workers = int(float(max_workers.strip()))
         except Exception:
             max_workers = None
-        res = data_processor.reload_from_local(max_files=max_files, max_workers=(max_workers or 24))
+        include_pattern = payload.get('include_pattern') or None
+        # Optional override of unique match cap via request; default remains 3613
+        max_unique = payload.get('max_unique_matches')
+        try:
+            if isinstance(max_unique, str):
+                max_unique = int(float(max_unique.strip()))
+        except Exception:
+            max_unique = None
+        if max_unique is None:
+            uniq_env = (os.getenv('LOCAL_MAX_UNIQUE_MATCHES') or '').strip()
+            try:
+                max_unique = int(float(uniq_env)) if uniq_env else 3613
+            except Exception:
+                max_unique = 3613
+        res = data_processor.reload_from_local(max_files=max_files, max_workers=(max_workers or 24), include_pattern=include_pattern, max_unique_matches=max_unique)
         return jsonify(res)
     except Exception as e:
         logger.error(f"Error reloading data: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/storage/list')
-def storage_list():
-    """List objects and directories at a given prefix for debugging storage layout."""
-    try:
-        if not supabase_client or not supabase_client.is_connected or not supabase_client.bucket_name:
-            return jsonify({'error': 'Supabase storage not configured'}), 400
-        prefix = request.args.get('prefix', default=supabase_client.bucket_prefix or '')
-        bucket = supabase_client.bucket_name
-        storage = supabase_client.supabase.storage.from_(bucket)
-        items = storage.list(prefix)
-        out = []
-        for it in items:
-            if isinstance(it, dict):
-                out.append({k: it.get(k) for k in ['name', 'id', 'updated_at', 'metadata', 'created_at'] if k in it})
-        return jsonify({'bucket': bucket, 'prefix': prefix, 'count': len(out), 'items': out})
-    except Exception as e:
-        logger.error(f"Error listing storage: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/storage/scan')
-def storage_scan():
-    """Recursively scan storage to enumerate JSON files and effective prefix."""
-    try:
-        if not supabase_client or not supabase_client.is_connected or not supabase_client.bucket_name:
-            return jsonify({'error': 'Supabase storage not configured'}), 400
-        # Use the client crawl via get_all_matches_from_bucket but without downloading all contents
-        bucket = supabase_client.bucket_name
-        storage = supabase_client.supabase.storage.from_(bucket)
-
-        def crawl(path: str):
-            to_visit = [path]
-            files = []
-            visited = set()
-            while to_visit:
-                raw_p = to_visit.pop(0)
-                p = (raw_p or '').strip('/')
-                if p in visited:
-                    continue
-                visited.add(p)
-                try:
-                    items = storage.list(p if p else '')
-                except Exception:
-                    continue
-                for it in items:
-                    if not isinstance(it, dict):
-                        continue
-                    name = it.get('name')
-                    if not name:
-                        continue
-                    full_path = f"{p}/{name}" if p else name
-                    meta = it.get('metadata') or {}
-                    mimetype = meta.get('mimetype') or meta.get('contentType')
-                    is_file = bool(mimetype) or ('.' in name)
-                    if is_file and name.lower().endswith('.json'):
-                        files.append(full_path)
-                    elif not is_file:
-                        to_visit.append(full_path)
-            return files
-
-        prefixes_to_try = []
-        if supabase_client.bucket_prefix is not None:
-            prefixes_to_try.extend([supabase_client.bucket_prefix, (supabase_client.bucket_prefix.rstrip('/') + '/') if supabase_client.bucket_prefix else ''])
-        prefixes_to_try.extend(['', 'data', 'data/', 'matches', 'matches/', 'json', 'json/', '2024', '2024/'])
-
-        seen = set()
-        found = []
-        for p in prefixes_to_try:
-            if p in seen:
-                continue
-            seen.add(p)
-            f = crawl(p)
-            if f:
-                found = f
-                effective_prefix = p
-                break
-        return jsonify({'bucket': bucket, 'effective_prefix': effective_prefix if found else (supabase_client.bucket_prefix or ''), 'json_count': len(found), 'sample': found[:10]})
-    except Exception as e:
-        logger.error(f"Error scanning storage: {e}")
-        return jsonify({'error': str(e)}), 500
+## Removed storage list/scan endpoints
 
 # API Endpoints
 
@@ -260,6 +153,85 @@ def get_data_players():
         })
     except Exception as e:
         logger.error(f"Error getting players: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/data/unified-options')
+def unified_options():
+    """Return a single combined list of players, teams, and venues for one dropdown."""
+    try:
+        players = list(data_processor.get_all_players())
+        teams = list(data_processor.get_all_teams())
+        venues = list(data_processor.get_all_venues())
+        def pack(kind, name):
+            return {'type': kind, 'name': name}
+        combined = [pack('player', p) for p in players] + [pack('team', t) for t in teams] + [pack('venue', v) for v in venues]
+        # Sort case-insensitively by name
+        combined.sort(key=lambda x: x['name'].lower())
+        return jsonify({'options': combined, 'counts': {'players': len(players), 'teams': len(teams), 'venues': len(venues)}})
+    except Exception as e:
+        logger.error(f"Error getting unified options: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/search')
+def unified_search():
+    """Unified search across players, teams, and venues. Returns overall stats for the first exact match.
+    Query parameters:
+      - q: query string
+      - type: optional 'player'|'team'|'venue' to disambiguate
+    """
+    try:
+        q = (request.args.get('q') or '').strip()
+        ql = q.lower()
+        kind = (request.args.get('type') or '').strip().lower()
+        if not q:
+            return jsonify({'error': 'Missing q'}), 400
+        # Try to disambiguate by exact case-insensitive match
+        if not kind or kind == 'player':
+            players = data_processor.get_all_players()
+            for p in players:
+                if p.lower() == ql:
+                    stats = player_stats.get_player_stats(p, {})
+                    return jsonify({'type': 'player', 'name': p, 'data': stats})
+            if kind == 'player':
+                return jsonify({'error': f'Player not found: {q}'}), 404
+        if not kind or kind == 'team':
+            teams = data_processor.get_all_teams()
+            for t in teams:
+                if t.lower() == ql:
+                    stats = team_analyzer.get_team_stats(t, {})
+                    return jsonify({'type': 'team', 'name': t, 'data': stats})
+            if kind == 'team':
+                return jsonify({'error': f'Team not found: {q}'}), 404
+        if not kind or kind == 'venue':
+            venues = data_processor.get_all_venues()
+            for v in venues:
+                if v.lower() == ql:
+                    stats = venue_analyzer.get_venue_stats(v, {})
+                    return jsonify({'type': 'venue', 'name': v, 'data': stats})
+            if kind == 'venue':
+                return jsonify({'error': f'Venue not found: {q}'}), 404
+        # If no exact match, return suggestions
+        suggest = []
+        for p in data_processor.get_all_players():
+            if ql in p.lower():
+                suggest.append({'type': 'player', 'name': p})
+                if len(suggest) >= 10:
+                    break
+        if len(suggest) < 10:
+            for t in data_processor.get_all_teams():
+                if ql in t.lower():
+                    suggest.append({'type': 'team', 'name': t})
+                    if len(suggest) >= 20:
+                        break
+        if len(suggest) < 20:
+            for v in data_processor.get_all_venues():
+                if ql in v.lower():
+                    suggest.append({'type': 'venue', 'name': v})
+                    if len(suggest) >= 30:
+                        break
+        return jsonify({'query': q, 'suggestions': suggest})
+    except Exception as e:
+        logger.error(f"Error in unified search: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/players/compare')
@@ -552,8 +524,7 @@ def data_health():
             'matches_loaded': len(dp.matches_data),
             'players_count': len(getattr(dp, 'players_cache', set())),
             'teams_count': len(getattr(dp, 'teams_cache', set())),
-            'venues_count': len(getattr(dp, 'venues_cache', set())),
-            'supabase_connected': True if 'supabase_client' in globals() and supabase_client and supabase_client.is_connected else False
+            'venues_count': len(getattr(dp, 'venues_cache', set()))
         }
         status = dp.get_loading_status() if hasattr(dp, 'get_loading_status') else {}
         # Include background loading status

@@ -56,13 +56,14 @@
     <div class="row justify-content-center mb-5">
         <div class="col-md-10">
             <div class="search-container">
-                <div class="search-bar">
+                <div class="search-bar position-relative">
                     <input type="text" class="form-control" id="globalSearch" 
-                           placeholder="Search players, teams, venues...">
-                    <button class="btn btn-primary" type="button">
+                           placeholder="Search players, teams, venues..." autocomplete="off">
+                    <button class="btn btn-primary" id="globalSearchBtn" type="button">
                         <i class="fas fa-search"></i>
                         <span class="ms-2">Search</span>
                     </button>
+                    <div id="globalSearchList" class="list-group position-absolute w-100" style="z-index: 1000; top: 48px; display: none; max-height: 300px; overflow-y: auto;"></div>
                 </div>
             </div>
         </div>
@@ -166,6 +167,11 @@
         
         
     </div>
+    <div class="row">
+        <div class="col-12">
+            <div id="globalSearchResult" class="mt-3" style="display:none"></div>
+        </div>
+    </div>
 </div>
 
 <!-- Quick Analysis Section -->
@@ -249,6 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadQuickStats();
     loadPlayerOptions();
     startHealthPolling();
+    initUnifiedSearch();
 });
 
 function loadQuickStats() {
@@ -399,13 +406,132 @@ document.getElementById('globalSearch').addEventListener('keypress', function(e)
         performGlobalSearch();
     }
 });
+    // Unified search (combined players, teams, venues)
+    function initUnifiedSearch() {
+        const input = document.getElementById('globalSearch');
+        const list = document.getElementById('globalSearchList');
+        const btn = document.getElementById('globalSearchBtn');
+        let options = [];
+        fetch('/api/data/unified-options')
+            .then(r => r.json())
+            .then(d => { options = (d.options || []); })
+            .catch(() => { options = []; });
+        function renderSuggestions(q) {
+            const ql = q.toLowerCase();
+            const items = options.filter(o => o.name.toLowerCase().includes(ql)).slice(0, 20);
+            if (!q || items.length === 0) {
+                list.style.display = 'none';
+                list.innerHTML = '';
+                return;
+            }
+            list.innerHTML = items.map(o => `<button type="button" class="list-group-item list-group-item-action" data-type="${o.type}" data-name="${o.name}"><span class="badge bg-secondary me-2 text-uppercase">${o.type}</span>${o.name}</button>`).join('');
+            list.style.display = 'block';
+        }
+        input.addEventListener('input', () => renderSuggestions(input.value.trim()));
+        input.addEventListener('focus', () => renderSuggestions(input.value.trim()));
+        document.addEventListener('click', (e) => {
+            if (!list.contains(e.target) && e.target !== input) {
+                list.style.display = 'none';
+            }
+        });
+        list.addEventListener('click', (e) => {
+            const btn = e.target.closest('button.list-group-item');
+            if (!btn) return;
+            const name = btn.getAttribute('data-name');
+            const type = btn.getAttribute('data-type');
+            input.value = name;
+            list.style.display = 'none';
+            performUnifiedSearch(name, type);
+        });
+        btn.addEventListener('click', () => performUnifiedSearch(input.value.trim(), ''));
+    }
+
 
 function performGlobalSearch() {
     const query = document.getElementById('globalSearch').value.trim();
-    if (query) {
-        // Redirect to search results page or perform search
+            performUnifiedSearch(query, '');
         window.location.href = `/search?q=${encodeURIComponent(query)}`;
     }
-}
+
+    function performUnifiedSearch(q, type) {
+        const resDiv = document.getElementById('globalSearchResult');
+        resDiv.style.display = 'block';
+        resDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>';
+        const params = new URLSearchParams();
+        params.append('q', q);
+        if (type) params.append('type', type);
+        fetch(`/api/search?${params}`)
+            .then(r => r.json())
+            .then(d => {
+                if (d.error) {
+                    resDiv.innerHTML = `<div class="alert alert-warning">${d.error}</div>`;
+                    return;
+                }
+                if (d.suggestions) {
+                    const items = d.suggestions.map(s => `<li class="list-group-item"><span class="badge bg-secondary me-2 text-uppercase">${s.type}</span>${s.name}</li>`).join('');
+                    resDiv.innerHTML = `<div class="card"><div class="card-body"><h6 class="mb-3">No exact match. Suggestions:</h6><ul class="list-group">${items}</ul></div></div>`;
+                    return;
+                }
+                const kind = d.type;
+                const name = d.name;
+                const data = d.data || {};
+                // Render a concise summary per kind
+                if (kind === 'player') {
+                    const bat = data.batting || {};
+                    const bowl = data.bowling || {};
+                    resDiv.innerHTML = `
+                    <div class="card border-primary"><div class="card-body">
+                        <h5 class="text-primary mb-3"><i class="fas fa-user me-2"></i>${name} — Overview</h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div><small class="text-muted">Matches:</small> <strong>${bat.matches || 0}</strong></div>
+                                <div><small class="text-muted">Runs:</small> <strong>${bat.runs || 0}</strong></div>
+                                <div><small class="text-muted">Average:</small> <strong>${bat.average || '0.00'}</strong></div>
+                            </div>
+                            <div class="col-md-6">
+                                <div><small class="text-muted">Strike Rate:</small> <strong>${bat.strike_rate || '0.00'}</strong></div>
+                                <div><small class="text-muted">100s:</small> <strong>${bat.hundreds || 0}</strong></div>
+                                <div><small class="text-muted">Wickets:</small> <strong>${bowl.wickets || 0}</strong></div>
+                            </div>
+                        </div>
+                    </div></div>`;
+                } else if (kind === 'team') {
+                    const general = data.general || {};
+                    resDiv.innerHTML = `
+                    <div class="card border-secondary"><div class="card-body">
+                        <h5 class="text-secondary mb-3"><i class="fas fa-users me-2"></i>${name} — Overview</h5>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div><small class="text-muted">Matches:</small> <strong>${general.total_matches || 0}</strong></div>
+                                <div><small class="text-muted">Wins:</small> <strong>${general.wins || 0}</strong></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div><small class="text-muted">Losses:</small> <strong>${general.losses || 0}</strong></div>
+                                <div><small class="text-muted">Win%:</small> <strong>${general.win_percentage || 0}</strong></div>
+                            </div>
+                            <div class="col-md-4">
+                                <div><small class="text-muted">Toss Win%:</small> <strong>${general.toss_win_percentage || 0}</strong></div>
+                            </div>
+                        </div>
+                    </div></div>`;
+                } else if (kind === 'venue') {
+                    const general = data.general || {};
+                    resDiv.innerHTML = `
+                    <div class="card border-info"><div class="card-body">
+                        <h5 class="text-info mb-3"><i class="fas fa-map-marker-alt me-2"></i>${name} — Overview</h5>
+                        <div class="row">
+                            <div class="col-md-4"><div><small class="text-muted">Matches:</small> <strong>${general.total_matches || 0}</strong></div></div>
+                            <div class="col-md-4"><div><small class="text-muted">Teams Played:</small> <strong>${general.teams_played || 0}</strong></div></div>
+                            <div class="col-md-4"><div><small class="text-muted">Formats:</small> <strong>${Object.keys(general.formats||{}).join(', ')}</strong></div></div>
+                        </div>
+                    </div></div>`;
+                } else {
+                    resDiv.innerHTML = `<div class="alert alert-secondary">No result.</div>`;
+                }
+            })
+            .catch(() => {
+                resDiv.innerHTML = '<div class="alert alert-danger">Error performing search</div>';
+            });
+    }
 </script>
 {% endblock %}
